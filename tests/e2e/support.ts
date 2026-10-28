@@ -71,3 +71,12 @@ export async function shopper(browser: Browser, path: string, siteKey: string, q
 
 /** App alerts only: Next.js injects its own role="alert" route announcer, which getByRole("alert") would also match. */
 export const alertOf = (p: Page) => p.locator('[role="alert"]:not(#__next-route-announcer__)');
+
+/** The editor groups its controls into section tabs. */
+export const openTab = (p: Page, name: "Content" | "Design" | "Targeting" | "Display" | "Offer" | "Test" | "History") => p.getByRole("tab", { name, exact: true }).click();
+/** Opens the review drawer, approves, and presses the publish button. Does not wait for the result. */
+export async function launch(p: Page, button: "Publish" | "Publish changes" = "Publish") {
+  await p.getByRole("button", { name: /^(Launch|Update)$/ }).click();
+  await p.getByRole("checkbox", { name: /approve it to go live/ }).check();
+  await p.getByRole("button", { name: button, exact: true }).click();
+}

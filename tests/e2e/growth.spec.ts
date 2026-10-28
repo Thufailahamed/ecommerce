@@ -1,15 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { API, MAIL, STORE, WEB } from "./playwright.config";
-import { PASSWORD, alertOf, apiPost, firstUrl, newMerchant, shopper, totp, unique, waitForMail, outbox, type Merchant } from "./support";
+import { PASSWORD, alertOf, apiPost, firstUrl, launch, newMerchant, openTab, shopper, totp, unique, waitForMail, outbox, type Merchant } from "./support";
 
 const errors: string[] = [];
 const watch = (p: Page) => { p.on("pageerror", (e) => errors.push(e.message)); };
 
 async function publishFromEditor(page: Page, opts: { name: string; trigger?: string }) {
   await page.getByLabel("Campaign name").fill(opts.name);
-  if (opts.trigger) await page.getByLabel("Trigger").selectOption(opts.trigger);
-  await page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  if (opts.trigger) { await openTab(page, "Display"); await page.getByLabel("Trigger").selectOption(opts.trigger); }
+  await launch(page);
 }
 
 test.describe("password reset", () => {
@@ -163,8 +162,9 @@ test.describe("back-in-stock alerts", () => {
     const product = (available: boolean) => ({ products: [{ externalId: "boot-1", title: "Trail Boot", url: "/products/trail-boot", variants: [{ externalId: "boot-1-9", available }] }] });
     expect((await apiPost(m.page, `/api/v1/stores/${m.storeId}/products/import`, product(false))).ok()).toBe(true);
 
-    await m.page.goto("/app/campaigns/new");
+    await m.page.goto("/app/campaigns/new?start=blank");
     await m.page.getByLabel("Format").selectOption("restock");
+    await openTab(m.page, "Targeting");
     await expect(m.page.getByText("Product is out of stock")).toBeVisible(); // sensible rules were added for them
     await expect(m.page.getByLabel("Campaign preview").getByLabel("Email address")).toBeVisible(); // live preview shows the real form
     await publishFromEditor(m.page, { name: "Restock form", trigger: "immediate" });
@@ -215,7 +215,8 @@ test.describe("promotions guardrail", () => {
     const m = await newMerchant(browser, { plan: "growth" });
     const { page } = m; watch(page);
 
-    await page.goto("/app/campaigns/new");
+    await page.goto("/app/campaigns/new?start=blank");
+    await openTab(page, "Offer");
     await expect(page.getByText(/Promotions are off for this store/)).toBeVisible();
     await page.getByLabel("Show a discount code in this campaign").check();
     await publishFromEditor(page, { name: "Spring offer", trigger: "immediate" });
@@ -228,15 +229,15 @@ test.describe("promotions guardrail", () => {
 
     await page.goto("/app/campaigns");
     await page.getByRole("link", { name: "Spring offer" }).click();
+    await openTab(page, "Offer");
     await expect(page.getByLabel("Percent off")).toBeVisible();
     await page.getByLabel("Percent off").fill("25");
-    await page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await launch(page);
     await expect(alertOf(page).first()).toContainText("caps promotions at 20%");
 
+    await page.getByRole("button", { name: "Keep editing" }).click();
     await page.getByLabel("Percent off").fill("15");
-    await page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await launch(page);
     await expect(page.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
 
     const s = await shopper(browser, "/", m.siteKey);
@@ -252,8 +253,8 @@ test.describe("holdout experiment", () => {
   test("randomises consenting visitors, hides the campaign from the control group, and reports honestly", async ({ browser }) => {
     const m = await newMerchant(browser, { plan: "growth" });
     const { page } = m; watch(page);
-    await page.goto("/app/campaigns/new");
-    await page.getByLabel("Measure real impact", { exact: false }).first().isVisible().catch(() => undefined);
+    await page.goto("/app/campaigns/new?start=blank");
+    await openTab(page, "Test");
     await page.getByLabel("Hold some visitors out as a control group (Growth)").check();
     await page.getByLabel(/Holdout \(% of consenting visitors\)/).fill("50");
     await expect(page.getByText(/Visitors who have not consented always see the campaign/)).toBeVisible();

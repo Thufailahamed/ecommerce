@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { API, MAIL, STORE } from "./playwright.config";
+import { openTab } from "./support";
 
 const EMAIL = `e2e${Date.now()}@example.com`;
 const PASSWORD = "correct-horse-battery";
@@ -108,27 +109,31 @@ test.describe.serial("merchant to shopper, end to end", () => {
   });
 
   test("build a campaign in the editor with a live preview, approve and publish", async () => {
-    await merchant.goto("/app/campaigns/new");
+    await merchant.goto("/app/campaigns/new?start=blank");
     await merchant.getByLabel("Campaign name").fill("E2E welcome");
     await merchant.getByLabel("Headline").fill(HEADLINE);
     // preview is driven by the same renderer the storefront uses
     await expect(merchant.getByLabel("Campaign preview").getByText(HEADLINE)).toBeVisible();
+    await openTab(merchant, "Display");
     await merchant.getByLabel("Trigger").selectOption("immediate");
+    await openTab(merchant, "Targeting");
     await merchant.getByLabel("Add rule").selectOption("page_type");
     await merchant.getByLabel("Page type").selectOption("home");
     await expect(merchant.getByText("Page type is home")).toBeVisible();
 
+    await merchant.getByRole("button", { name: "Launch" }).click();
     const publish = merchant.getByRole("button", { name: "Publish", exact: true });
     await expect(publish).toBeDisabled(); // cannot publish without approval
     await merchant.getByRole("checkbox", { name: /approve it to go live/ }).check();
     await publish.click();
     await expect(merchant).toHaveURL(/\/app\/campaigns\/cmp_/);
     await expect(merchant.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
-    await expect(merchant.getByText("Version history")).toBeVisible();
+    await openTab(merchant, "History");
+    await expect(merchant.getByRole("region", { name: "Version history" })).toBeVisible();
   });
 
   test("rejects a javascript: link before it can be saved", async () => {
-    await merchant.goto("/app/campaigns/new");
+    await merchant.goto("/app/campaigns/new?start=blank");
     await merchant.getByLabel("Button link").fill("javascript:alert(1)");
     await expect(merchant.getByRole("button", { name: "Create draft" })).toBeDisabled();
     await expect(merchant.getByText(/ctaUrl/)).toBeVisible();
@@ -205,7 +210,7 @@ test.describe.serial("merchant to shopper, end to end", () => {
 
   test("pause takes the campaign off the storefront", async ({ browser }) => {
     await merchant.goto("/app/campaigns");
-    await merchant.getByRole("button", { name: "Pause" }).click();
+    await merchant.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(merchant.locator("span", { hasText: /^paused$/ })).toBeVisible();
     const v = await visitor(browser, "/");
     await v.page.waitForTimeout(3000);

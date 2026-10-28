@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { API, STORE } from "./playwright.config";
-import { alertOf, newMerchant, shopper, type Merchant } from "./support";
+import { alertOf, launch, newMerchant, openTab, shopper, type Merchant } from "./support";
 
 let m: Merchant;
 
@@ -18,13 +18,13 @@ async function createCard(page: Page, o: { name: string; headline: string; categ
   await page.getByLabel("Headline").fill(o.headline);
   if (o.category) await page.getByLabel("Category").fill(o.category);
   if (o.order !== undefined) await page.getByLabel("Order", { exact: true }).fill(String(o.order));
-  if (o.ends) await page.getByLabel("Ends").fill(o.ends);
+  if (o.ends) { await openTab(page, "Display"); await page.getByLabel("Ends").fill(o.ends); }
   if (o.cartOnly) {
+    await openTab(page, "Targeting");
     await page.getByLabel("Add rule").selectOption("page_type");
     await page.getByLabel("Page type").selectOption("cart");
   }
-  await page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await launch(page);
   await expect(page).toHaveURL(/\/app\/campaigns\/cmp_/);
   await expect(page.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
   await expect(alertOf(page)).toHaveCount(0);
@@ -176,10 +176,10 @@ test.describe.serial("notification feed, end to end", () => {
     await m.page.goto("/app/campaigns");
     // Wait for the list itself: counting buttons while it is still loading would pass vacuously.
     await expect(m.page.getByRole("row", { name: /Card: summer/ })).toBeVisible();
-    await expect(m.page.getByRole("button", { name: "Pause" })).toHaveCount(4);
+    await expect(m.page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(4);
     for (let left = 4; left > 0; left--) {
-      await m.page.getByRole("button", { name: "Pause" }).first().click();
-      await expect(m.page.getByRole("button", { name: "Pause" })).toHaveCount(left - 1);
+      await m.page.getByRole("button", { name: "Pause", exact: true }).first().click();
+      await expect(m.page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(left - 1);
     }
     await expect(m.page.locator("span", { hasText: /^paused$/ })).toHaveCount(4);
     const { ctx, page } = await shopper(browser, "/products/running-shoe", m.siteKey, { consent: "1" });

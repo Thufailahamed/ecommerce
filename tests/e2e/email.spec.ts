@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { API, STORE } from "./playwright.config";
-import { alertOf, firstUrl, newMerchant, outbox, shopper, unique, waitForMail, type Merchant } from "./support";
+import { alertOf, firstUrl, launch, newMerchant, openTab, outbox, shopper, unique, waitForMail, type Merchant } from "./support";
 
 let m: Merchant;
 
@@ -40,7 +40,9 @@ test.describe.serial("email signup, end to end", () => {
 
     await m.page.getByLabel("Campaign name").fill("E2E email form");
     await m.page.getByLabel("Headline").fill(HEADLINE);
+    await openTab(m.page, "Display");
     await m.page.getByLabel("Trigger").selectOption("immediate");
+    await openTab(m.page, "Content");
 
     await m.page.getByLabel("Consent text").fill("I agree to get the E2E newsletter from this shop, thanks very much.");
     await expect(m.page.getByText("does not mention that shoppers can unsubscribe")).toBeVisible();
@@ -51,8 +53,7 @@ test.describe.serial("email signup, end to end", () => {
     await expect(preview.getByRole("checkbox")).not.toBeChecked(); // the real renderer, never pre-ticked
     await expect(preview.getByText(CONSENT)).toBeVisible();
 
-    await m.page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-    await m.page.getByRole("button", { name: "Publish", exact: true }).click();
+    await launch(m.page);
     await expect(m.page).toHaveURL(/\/app\/campaigns\/cmp_/);
     await expect(m.page.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
     await expect(alertOf(m.page)).toHaveCount(0);

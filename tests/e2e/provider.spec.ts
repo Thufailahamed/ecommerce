@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { API, PROVIDERS, WEB } from "./playwright.config";
-import { alertOf, firstUrl, newMerchant, shopper, unique, waitForMail, type Merchant } from "./support";
+import { alertOf, firstUrl, launch, newMerchant, openTab, shopper, unique, waitForMail, type Merchant } from "./support";
 
 /**
  * Email list sync, end to end: real Worker + queue + D1, the real SDK in a real browser, a mock standing in for Klaviyo and
@@ -85,8 +85,11 @@ test.describe.serial("email list sync, end to end", () => {
     await m.page.getByLabel("Headline").fill(HEADLINE);
     await m.page.getByLabel("Consent text").fill(CONSENT);
     await m.page.getByLabel("Style").selectOption("inline");
+    await openTab(m.page, "Display");
     await expect(m.page.getByLabel("Trigger")).toHaveCount(0); // part of the page: no trigger
+    await openTab(m.page, "Content");
     await m.page.getByLabel(/Also ask for a first name/).check();
+    await openTab(m.page, "Offer");
     await m.page.getByLabel(/Give subscribers a discount code once they confirm/).check();
     await m.page.getByLabel("Code", { exact: true }).fill(CODE);
     await m.page.getByLabel("Percent off").fill("15");
@@ -96,8 +99,7 @@ test.describe.serial("email list sync, end to end", () => {
     await expect(preview.getByRole("checkbox")).not.toBeChecked();
     await expect(preview).not.toContainText(CODE); // the real renderer never draws the code on the form
 
-    await m.page.getByRole("checkbox", { name: /approve it to go live/ }).check();
-    await m.page.getByRole("button", { name: "Publish", exact: true }).click();
+    await launch(m.page);
     await expect(m.page).toHaveURL(/\/app\/campaigns\/cmp_/);
     await expect(m.page.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
     await expect(alertOf(m.page)).toHaveCount(0);

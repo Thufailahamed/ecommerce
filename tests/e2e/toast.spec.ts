@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { API, STORE } from "./playwright.config";
-import { alertOf, apiPost, newMerchant, shopper, type Merchant } from "./support";
+import { alertOf, apiPost, newMerchant, openTab, shopper, type Merchant } from "./support";
 
 const HEADLINE = "E2E free shipping nudge";
 let m: Merchant;
@@ -62,7 +62,9 @@ test.describe.serial("toast tool, end to end", () => {
     await m.page.getByLabel("Headline").fill(HEADLINE);
     await m.page.getByLabel("Type").selectOption("shipping_incentive");
     await expect(m.page.getByLabel("Free-shipping threshold (USD)")).toHaveValue("75");
+    await openTab(m.page, "Display");
     await m.page.getByLabel("Trigger").selectOption("immediate");
+    await openTab(m.page, "Targeting");
     await m.page.getByLabel("Add rule").selectOption("page_type");
     await m.page.getByLabel("Page type").selectOption("product");
 
@@ -74,6 +76,7 @@ test.describe.serial("toast tool, end to end", () => {
     await m.page.getByRole("button", { name: "Mobile" }).click();
     await expect(preview.getByText(HEADLINE)).toBeVisible();
 
+    await m.page.getByRole("button", { name: "Launch" }).click();
     const publish = m.page.getByRole("button", { name: "Publish", exact: true });
     await expect(publish).toBeDisabled(); // never without explicit approval
     await m.page.getByRole("checkbox", { name: /approve it to go live/ }).check();
@@ -208,7 +211,7 @@ test.describe.serial("toast tool, end to end", () => {
 
   test("pausing takes it off the storefront", async ({ browser }) => {
     await m.page.goto("/app/campaigns");
-    await m.page.getByRole("button", { name: "Pause" }).click();
+    await m.page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(m.page.locator("span", { hasText: /^paused$/ })).toBeVisible();
     const { ctx, page } = await shopper(browser, "/products/running-shoe", m.siteKey, { consent: "1" });
     await setCart(page, 60);
