@@ -23,11 +23,11 @@ export function ViewTabs({ value, onChange }: { value: View; onChange: (v: View)
     refs.current[v.id]?.focus();
   };
   return (
-    <div role="tablist" aria-label="Analytics view" className="mb-6 flex gap-1 border-b border-line">
+    <div role="tablist" aria-label="Analytics view" className="mb-8 inline-flex gap-1 rounded-full border border-line bg-surface p-1">
       {VIEWS.map((v, i) => (
         <button key={v.id} ref={(el) => { refs.current[v.id] = el; }} role="tab" id={`analytics-tab-${v.id}`} aria-selected={value === v.id} aria-controls="analytics-panel"
           tabIndex={value === v.id ? 0 : -1} onClick={() => onChange(v.id)} onKeyDown={(e) => move(e, i)}
-          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${value === v.id ? "border-brand text-ink" : "border-transparent text-ink-2 hover:text-ink"}`}>
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${value === v.id ? "seg-active" : "text-ink-2 hover:text-ink"}`}>
           {v.label}
         </button>
       ))}
@@ -62,9 +62,9 @@ function ToolSection({ r, currency }: { r: ToolRollup; currency: string }) {
   const id = `tool-${r.tool}-h`;
   const max = Math.max(1, ...r.byCampaign.map((c) => c.impressions));
   return (
-    <section aria-labelledby={id} className="border-b border-line py-8 first:pt-0">
+    <section aria-labelledby={id} className="card mb-6 p-6 md:p-7">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id={id} className="font-display text-lg font-semibold">{meta.name}</h2>
+        <h2 id={id} className="font-display text-base font-bold uppercase tracking-wide">{meta.name}</h2>
         {!meta.shipped && <Badge>Not available yet</Badge>}
         {meta.shipped && r.campaigns > 0 && <span className="text-sm text-ink-3">{r.live} live of {r.campaigns} {r.campaigns === 1 ? "campaign" : "campaigns"}</span>}
       </div>
@@ -78,34 +78,35 @@ function ToolSection({ r, currency }: { r: ToolRollup; currency: string }) {
 
       {state === "data" && (
         <>
-          <div className="mt-5 grid grid-cols-2 gap-6 md:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
             {defs.map((d) => <Metric key={d.key} label={d.label} value={formatMetric(d, valueOf(r.metrics, d.key), currency)} {...(d.note ? { note: d.note } : {})} />)}
           </div>
           {r.metrics.deliveryFailed > 0 && (
-            <p className="mt-4 border-l-2 border-warn bg-warn/10 px-3 py-2 text-sm">
+            <p className="mt-4 rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-relaxed">
               {int(r.metrics.deliveryFailed)} confirmation {r.metrics.deliveryFailed === 1 ? "email" : "emails"} could not be sent in this period. Those shoppers were not confirmed; check your email sending setup.
             </p>
           )}
-          <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm">
+          <div className="mt-6 overflow-hidden rounded-2xl border border-line">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr:hover]:bg-white/[0.025] [&_td]:px-4 [&_td]:py-3 [&_th]:bg-white/[0.02] [&_th]:px-4 [&_th]:py-3">
               <caption className="sr-only">{meta.name} by campaign</caption>
               <thead>
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-3">
-                  <th scope="col" className="py-2 font-medium">Campaign</th>
+                <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                  <th scope="col" className="font-medium">Campaign</th>
                   {defs.map((d) => <th key={d.key} scope="col" className="text-right font-medium">{d.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {r.byCampaign.map((c) => (
-                  <tr key={c.campaignId} className="border-b border-line">
-                    <th scope="row" className="py-3 text-left font-medium">
+                  <tr key={c.campaignId}>
+                    <th scope="row" className="text-left font-medium">
                       <Link href={`/app/campaigns/${c.campaignId}`} className="hover:underline">{c.name}</Link>{" "}
                       <Badge tone={statusTone(c.status)}>{c.status}</Badge>
                     </th>
                     {defs.map((d) => (
                       <td key={d.key} className="num text-right">
                         {d.key === "impressions"
-                          ? <div className="flex items-center justify-end gap-2"><div aria-hidden className="h-2 rounded-sm bg-brand" style={{ width: `${Math.max(2, (c.impressions / max) * 48)}px` }} /><span>{int(c.impressions)}</span></div>
+                          ? <div className="flex items-center justify-end gap-2"><div aria-hidden className="h-2 rounded-full bg-gradient-to-r from-brand-solid to-brand-glow" style={{ width: `${Math.max(4, (c.impressions / max) * 48)}px` }} /><span>{int(c.impressions)}</span></div>
                           : formatMetric(d, valueOf(c, d.key), currency)}
                       </td>
                     ))}
@@ -113,6 +114,7 @@ function ToolSection({ r, currency }: { r: ToolRollup; currency: string }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
@@ -132,7 +134,7 @@ export function ToolAnalyticsView({ store, range }: { store: Store; range: strin
         <>
           {TOOL_ORDER.map((tool) => { const r = byTool.get(tool); return r ? <ToolSection key={tool} r={r} currency={store.currency} /> : null; })}
           <ul className="mt-6 space-y-2">
-            {data.notes.map((n) => <li key={n} className="border-l-2 border-warn bg-warn/10 px-3 py-2 text-sm">{n}</li>)}
+            {data.notes.map((n) => <li key={n} className="rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-relaxed">{n}</li>)}
           </ul>
           <p className="mt-4 text-xs text-ink-3">Data freshness: latest day with events {data.freshness.latestDay ?? "none"}. Events are processed asynchronously and may lag by a few minutes.</p>
         </>

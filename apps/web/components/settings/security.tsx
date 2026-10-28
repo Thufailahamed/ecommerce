@@ -42,7 +42,7 @@ export function SecuritySection() {
       {setup && !security.mfaEnabled && (
         <form className="max-w-md space-y-4" onSubmit={(e) => { e.preventDefault(); void run("confirm", async () => { const r = await api<{ recoveryCodes: string[] }>("/api/v1/auth/mfa/confirm", { method: "POST", body: { code } }); setCodes(r.recoveryCodes); setSetup(null); setCode(""); }); }}>
           <p className="text-sm text-ink-2">In your authenticator app, add an account manually and enter this key:</p>
-          <code className="num block break-all border border-line bg-surface p-3 text-sm" data-testid="mfa-secret">{setup.secret}</code>
+          <code className="num block break-all rounded-xl border border-line bg-canvas/70 p-4 text-sm" data-testid="mfa-secret">{setup.secret}</code>
           <details className="text-xs text-ink-3"><summary className="cursor-pointer">Setup link (for apps that accept otpauth links)</summary><code className="num mt-1 block break-all">{setup.otpauthUrl}</code></details>
           <Field label="6-digit code from the app"><Input inputMode="numeric" pattern="\d{6}" maxLength={6} required autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></Field>
           <div className="flex gap-2"><Button type="submit" variant="primary" busy={busy === "confirm"}>Turn on</Button><Button type="button" variant="ghost" onClick={() => setSetup(null)}>Cancel</Button></div>

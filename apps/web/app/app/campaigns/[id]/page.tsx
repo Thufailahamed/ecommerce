@@ -19,7 +19,7 @@ function Edit({ store, id }: { store: Store; id: string }) {
   const title = isNew ? (tool ? `New ${TOOLS[tool].name.toLowerCase()} campaign` : "New campaign") : "Edit campaign";
   return (
     <>
-      <PageHeader title={title} sub="Changes stay in draft until you approve and publish." />
+      <PageHeader eyebrow="Campaign editor" title={title} sub="Changes stay in draft until you approve and publish." />
       <ErrorNote error={error} />
       {!isNew && loading && <Skeleton className="h-96" />}
       {(isNew || data) && (

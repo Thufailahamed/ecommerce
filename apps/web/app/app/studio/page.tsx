@@ -5,7 +5,7 @@ import { api, ApiError, type Store } from "@/lib/api";
 import { buildGenerateBody, emptyStudioForm, fieldsFor, studioToolOptions, type StudioForm, type StudioTool } from "@/lib/studio";
 import { NeedStore } from "@/components/need-store";
 import { StudioReview, type StudioResult } from "@/components/studio-review";
-import { Button, ErrorNote, Field, PageHeader, Select, Textarea, Input } from "@/components/ui";
+import { Button, Empty, ErrorNote, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 
 function Studio({ store }: { store: Store }) {
   const [form, setForm] = useState<StudioForm>(emptyStudioForm);
@@ -32,9 +32,9 @@ function Studio({ store }: { store: Store }) {
 
   return (
     <>
-      <PageHeader title="AI campaign studio" sub="Pick a tool, or let the AI choose, and describe what you want to achieve. It drafts the campaign from your real catalog. It never publishes anything: you review, edit and approve." />
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,420px)_1fr]">
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void generate(false); }}>
+      <PageHeader eyebrow="Generate" title="AI campaign studio" sub="Pick a tool, or let the AI choose, and describe what you want to achieve. It drafts the campaign from your real catalog. It never publishes anything: you review, edit and approve." />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+        <form className="card space-y-5 p-6 md:p-7" onSubmit={(e) => { e.preventDefault(); void generate(false); }}>
           <Field label="What should it build?" hint="Tools that are not available yet cannot be picked.">
             <Select value={form.tool} onChange={(e) => set("tool", e.target.value as StudioTool)}>
               {studioToolOptions().map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
@@ -68,12 +68,12 @@ function Studio({ store }: { store: Store }) {
           <Button type="submit" variant="primary" busy={busy}><Sparkles className="size-4" />Generate draft</Button>
         </form>
 
-        <div aria-live="polite">
-          {!result && <div className="border border-dashed border-line p-10 text-center text-sm text-ink-3">Your draft and live preview will appear here.</div>}
+        <div aria-live="polite" className="min-w-0">
+          {!result && <Empty icon={Sparkles} title="Your draft will appear here" body="You will see a live preview, the audience, and what to check before you approve anything." />}
           {result && (
-            <div className="space-y-5">
+            <div className="card space-y-6 p-6 md:p-7">
               <StudioReview result={result} domain={store.domain} currency={store.currency} />
-              <div className="flex gap-2">
+              <div className="card-flat flex flex-col gap-3 rounded-2xl border border-line bg-canvas/50 p-3 sm:flex-row">
                 <Input aria-label="Feedback for regeneration" placeholder="Tell the AI what to change…" value={form.feedback} onChange={(e) => set("feedback", e.target.value)} />
                 <Button onClick={() => void generate(true)} busy={busy} disabled={!form.feedback.trim()}>Regenerate</Button>
               </div>

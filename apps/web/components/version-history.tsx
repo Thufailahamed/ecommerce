@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { api, ApiError, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { Button, ErrorNote } from "./ui";
+import { Badge, Button, ErrorNote } from "./ui";
 
 interface Version { id: string; version: number; source: string; createdAt: string }
 
@@ -24,13 +24,13 @@ export function VersionHistory({ store, campaignId }: { store: Store; campaignId
   }
 
   return (
-    <section className="mt-12 border-t border-line pt-6">
-      <h2 className="mb-3 text-sm font-semibold">Version history</h2>
+    <section className="card mt-10 p-5 md:p-6">
+      <h2 className="mb-4 font-display text-xs font-bold uppercase tracking-[0.14em]">Version history</h2>
       <ErrorNote error={error} />
       <ul className="divide-y divide-line text-sm">
         {data.map((v, i) => (
-          <li key={v.id} className="flex items-center justify-between py-2.5">
-            <span><span className="num font-medium">v{v.version}</span> <span className="text-ink-3">· {v.source} · {new Date(v.createdAt).toLocaleString()}</span>{i === 0 && <span className="ml-2 text-xs text-ok">live</span>}</span>
+          <li key={v.id} className="flex items-center justify-between gap-3 py-3">
+            <span className="flex flex-wrap items-center gap-2"><span className="num font-medium">v{v.version}</span> <span className="text-ink-3">· {v.source} · {new Date(v.createdAt).toLocaleString()}</span>{i === 0 && <Badge tone="ok" dot>Live</Badge>}</span>
             {i > 0 && <Button variant="ghost" busy={busy === v.id} onClick={() => void rollback(v.id)}>Roll back to this</Button>}
           </li>
         ))}
