@@ -16,7 +16,7 @@ import { DiscountGuardrail } from "@/components/settings/guardrail";
 import { WorkspacesSection } from "@/components/settings/workspaces";
 import { Code, Package, Power, Receipt, Trash2, Unplug } from "lucide-react";
 
-const SDK_URL = process.env["NEXT_PUBLIC_SDK_URL"] ?? "http://localhost:8788";
+const SDK_URL = process.env.NEXT_PUBLIC_SDK_URL ?? "http://localhost:8788";
 
 interface Integration { siteKey: string; configPublished: boolean; hasCatalog: boolean; snippet: string; platform: string; connection: { connected: boolean; kind: string | null }; maxDiscountPercent: number | null }
 

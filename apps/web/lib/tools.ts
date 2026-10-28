@@ -15,11 +15,11 @@ export interface ToolMeta {
 
 // NEXT_PUBLIC_* must be read with a static property name for Next.js to inline it at build time.
 const NAMES: Record<Tool, string | undefined> = {
-  toast: process.env["NEXT_PUBLIC_TOOL_NAME_TOAST"],
-  feed: process.env["NEXT_PUBLIC_TOOL_NAME_FEED"],
-  upsell: process.env["NEXT_PUBLIC_TOOL_NAME_UPSELL"],
-  sms: process.env["NEXT_PUBLIC_TOOL_NAME_SMS"],
-  email: process.env["NEXT_PUBLIC_TOOL_NAME_EMAIL"],
+  toast: process.env.NEXT_PUBLIC_TOOL_NAME_TOAST,
+  feed: process.env.NEXT_PUBLIC_TOOL_NAME_FEED,
+  upsell: process.env.NEXT_PUBLIC_TOOL_NAME_UPSELL,
+  sms: process.env.NEXT_PUBLIC_TOOL_NAME_SMS,
+  email: process.env.NEXT_PUBLIC_TOOL_NAME_EMAIL,
 };
 
 const BASE: Record<Tool, Omit<ToolMeta, "key" | "name" | "shipped"> & { defaultName: string }> = {

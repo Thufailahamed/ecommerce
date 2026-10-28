@@ -7,7 +7,7 @@ import { Button, ErrorNote, Field, Input } from "./ui";
 import { AuthShell } from "./auth-shell";
 import { PasswordStrength } from "./password-strength";
 
-const TURNSTILE_KEY = process.env["NEXT_PUBLIC_TURNSTILE_SITE_KEY"];
+const TURNSTILE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 /** Only same-site relative paths: never redirect to a URL taken from the query string. */
 const safeNext = (n: string | null) => (n && /^\/(?![\/\\])/.test(n) ? n : "/app");
