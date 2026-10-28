@@ -240,6 +240,9 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-
 @keyframes skeleton-sweep { to { transform: translateX(100%); } }
 .progress-fill { background: linear-gradient(90deg, #2350ff, #8fb0ff); box-shadow: 0 0 18px rgba(35, 80, 255, 0.85); transition: width 0.8s var(--ease-out); }
 .seg-active { background: var(--brand-solid); color: #fff; box-shadow: 0 8px 22px -10px rgba(35, 80, 255, 1); }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* Page entrance: children rise in one after another. Set --i on each child for its position. */
+.stagger > * { animation: rise 0.7s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
 .ring-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; border: 1px solid rgba(91, 130, 255, 0.5); animation: ring-pulse 2.4s ease-out infinite; }
 @keyframes ring-pulse { from { opacity: 0.9; transform: scale(0.96); } to { opacity: 0; transform: scale(1.12); } }
 

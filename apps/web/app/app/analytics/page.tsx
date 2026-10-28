@@ -8,6 +8,7 @@ import { FormResults } from "@/components/form-results";
 import { NeedStore } from "@/components/need-store";
 import { ToolAnalyticsView, ViewTabs, type View as AnalyticsView } from "@/components/tool-analytics";
 import { Badge, Empty, ErrorNote, Metric, Notice, PageHeader, Select, SectionTitle, Skeleton, tableClass } from "@/components/ui";
+import { Funnel, ToolGallery } from "@/components/visuals";
 
 function View({ store }: { store: Store }) {
   const [view, setView] = useState<AnalyticsView>("overview");
@@ -28,7 +29,7 @@ function View({ store }: { store: Store }) {
       <ErrorNote error={error} />
       {loading && <Skeleton className="h-40" />}
       {data && data.totals.impressions === 0 && data.totals.observedOrders === 0 && data.experiments.length === 0 && !data.forms?.length && (
-        <Empty icon={BarChart3} title="No activity in this period" body="Once a published campaign is shown to visitors who have consented to analytics, impressions and clicks appear here. Check Settings to confirm the snippet is installed." />
+        <Empty icon={BarChart3} visual={<ToolGallery tools={["toast", "feed", "upsell", "email"]} />} title="No activity in this period" body="Once a published campaign is shown to visitors who have consented to analytics, impressions and clicks appear here. Check Settings to confirm the snippet is installed." />
       )}
       {data && (data.totals.impressions > 0 || data.totals.observedOrders > 0 || data.experiments.length > 0 || (data.forms?.length ?? 0) > 0) && (
         <>
@@ -45,6 +46,16 @@ function View({ store }: { store: Store }) {
             <Metric icon={TrendingUp} label="Attributed revenue" value={money(data.totals.attributedRevenue)} note="Not incremental" />
           </div>
           <div className="mt-4"><Notice>{data.notes[0]}</Notice></div>
+
+          <section aria-labelledby="funnel-h" className="card mt-6 p-6 md:p-7">
+            <SectionTitle id="funnel-h" sub="From eligible visitors to attributed orders in the selected period.">Funnel</SectionTitle>
+            <Funnel steps={[
+              { label: "Eligible", value: data.totals.eligible },
+              { label: "Impressions", value: data.totals.impressions },
+              { label: "Clicks", value: data.totals.clicks },
+              { label: "Attributed orders", value: data.totals.attributedOrders },
+            ]} />
+          </section>
 
           <section aria-labelledby="by-campaign-h" className="mt-10">
             <SectionTitle id="by-campaign-h">By campaign</SectionTitle>

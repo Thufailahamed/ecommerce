@@ -5,6 +5,7 @@ import { api, ApiError, type Store } from "@/lib/api";
 import { buildGenerateBody, emptyStudioForm, fieldsFor, studioToolOptions, type StudioForm, type StudioTool } from "@/lib/studio";
 import { NeedStore } from "@/components/need-store";
 import { StudioReview, type StudioResult } from "@/components/studio-review";
+import { ToolVisual } from "@/components/visuals";
 import { Button, Empty, ErrorNote, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 
 function Studio({ store }: { store: Store }) {
@@ -40,6 +41,12 @@ function Studio({ store }: { store: Store }) {
               {studioToolOptions().map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
             </Select>
           </Field>
+          {form.tool !== "auto" && (
+            <div className="-mt-1 flex items-center gap-4 rounded-2xl border border-line bg-white/[0.02] p-3">
+              <div className="w-28 shrink-0"><ToolVisual tool={form.tool} /></div>
+              <p className="text-xs leading-relaxed text-ink-2">Preview of this format on a sample storefront. Your draft uses your own products and copy.</p>
+            </div>
+          )}
           <Field label="What do you want to achieve?" hint="For example: increase sales of running shoes without discounting everything.">
             <Textarea required minLength={10} maxLength={500} rows={4} value={form.objective} onChange={(e) => set("objective", e.target.value)} />
           </Field>

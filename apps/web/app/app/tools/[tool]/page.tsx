@@ -6,6 +6,7 @@ import { Activity, CheckCircle2, Circle, Layers, Plus, Radio } from "lucide-reac
 import type { CampaignRow, Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { NeedStore } from "@/components/need-store";
+import { ToolVisual } from "@/components/visuals";
 import { ProductLinks } from "@/components/product-links";
 import { Badge, Button, Empty, ErrorNote, Metric, PageHeader, SectionTitle, Skeleton, statusTone, tableClass } from "@/components/ui";
 import { TOOLS, isTool } from "@/lib/tools";
@@ -37,6 +38,17 @@ function ToolPage({ store, tool }: { store: Store; tool: Tool }) {
         </div>
       )}
 
+      {meta.shipped && (
+        <section aria-labelledby="look-h" className="card mt-8 grid items-center gap-8 overflow-hidden p-6 md:grid-cols-[1fr_minmax(0,22rem)] md:p-8">
+          <div>
+            <SectionTitle id="look-h">How it looks to shoppers</SectionTitle>
+            <p className="font-display text-lg font-bold uppercase leading-snug tracking-tight md:text-xl"><span className="text-grad">{meta.tagline}</span></p>
+            <p className="mt-3 text-xs text-ink-3">A preview with sample copy and products. Your own campaigns replace it once you create them.</p>
+          </div>
+          <ToolVisual tool={tool} />
+        </section>
+      )}
+
       <section aria-labelledby="setup-h" className="card mt-8 p-6 md:p-7">
         <SectionTitle id="setup-h">Setup</SectionTitle>
         <ol className="grid gap-2">
@@ -61,7 +73,7 @@ function ToolPage({ store, tool }: { store: Store; tool: Tool }) {
           <Empty title={`${meta.name} is not available yet`} body="It is built on the same targeting, scheduling, consent and analytics as the tools you can use today, and cannot be published until its whole path has been finished and tested." />
         )}
         {!camps.loading && meta.shipped && rows.length === 0 && (
-          <Empty title={`No ${meta.name.toLowerCase()} campaigns yet`} body="Nothing is shown to shoppers until you create a campaign and approve it."
+          <Empty visual={<div className="mx-auto w-64 max-w-full"><ToolVisual tool={tool} /></div>} title={`No ${meta.name.toLowerCase()} campaigns yet`} body="Nothing is shown to shoppers until you create a campaign and approve it."
             action={<Link href={newHref}><Button variant="primary">Create your first campaign</Button></Link>} />
         )}
         {rows.length > 0 && (

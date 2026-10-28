@@ -89,14 +89,17 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={clsx("skeleton", className)} />;
 }
 
-export function Empty({ title, body, action, icon: Icon = Inbox }: { title: string; body: string; action?: ReactNode; icon?: LucideIcon }) {
+/** Empty state. `visual` (a preview, gallery or photo) replaces the icon when a page can show what the feature looks like. */
+export function Empty({ title, body, action, icon: Icon = Inbox, visual }: { title: string; body: string; action?: ReactNode; icon?: LucideIcon; visual?: ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-[1.5rem] border border-dashed border-line-strong bg-surface/50 px-6 py-16 text-center">
+    <div className="relative overflow-hidden rounded-[1.5rem] border border-dashed border-line-strong bg-surface/50 px-6 py-14 text-center">
       <div aria-hidden className="pointer-events-none absolute inset-0 grid-lines opacity-40" />
       <div className="relative">
-        <div aria-hidden className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-brand-solid/15 text-brand ring-1 ring-brand-tint">
-          <Icon className="size-6" />
-        </div>
+        {visual ? <div className="mb-7">{visual}</div> : (
+          <div aria-hidden className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-brand-solid/15 text-brand ring-1 ring-brand-tint">
+            <Icon className="size-6" />
+          </div>
+        )}
         <h3 className="font-display text-base font-bold uppercase tracking-wide">{title}</h3>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">{body}</p>
         {action && <div className="mt-6 flex justify-center">{action}</div>}

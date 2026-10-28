@@ -4,6 +4,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Badge, Button, ErrorNote, Field, Input } from "../ui";
 import { Section } from "./section";
+import { Lock } from "lucide-react";
 
 export function SecuritySection() {
   const { security, reload } = useSession();
@@ -21,7 +22,7 @@ export function SecuritySection() {
   };
 
   return (
-    <Section id="security" title="Security" sub="Protect your account with a second step at sign-in. Use any authenticator app (1Password, Authy, Google Authenticator).">
+    <Section id="security" icon={Lock} title="Security" sub="Protect your account with a second step at sign-in. Use any authenticator app (1Password, Authy, Google Authenticator).">
       <ErrorNote error={error} />
       <p className="text-sm">Two-step verification: <Badge tone={security.mfaEnabled ? "ok" : "neutral"}>{security.mfaEnabled ? "On" : "Off"}</Badge>
         {security.emailConfigured && <span className="ml-4">Email: <Badge tone={security.emailVerified ? "ok" : "warn"}>{security.emailVerified ? "Confirmed" : "Not confirmed"}</Badge></span>}</p>

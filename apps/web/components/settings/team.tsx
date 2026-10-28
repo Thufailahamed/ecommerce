@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge, Button, ErrorNote, Field, Input, Select } from "../ui";
 import { Section } from "./section";
+import { Users } from "lucide-react";
 
 interface Team {
   members: { userId: string; email: string; role: string; joinedAt: string }[];
@@ -30,7 +31,7 @@ export function TeamSection({ orgId, myRole, myUserId }: { orgId: string; myRole
   };
 
   return (
-    <Section id="team" title="Team" sub="Owners and admins can invite people. Viewers can look but not change anything; editors can build campaigns; admins can publish.">
+    <Section id="team" icon={Users} title="Team" sub="Owners and admins can invite people. Viewers can look but not change anything; editors can build campaigns; admins can publish.">
       <ErrorNote error={error ?? loadError} />
       <table className="w-full text-sm">
         <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-3"><th className="py-2 font-medium">Member</th><th className="font-medium">Role</th><th /></tr></thead>

@@ -1,10 +1,13 @@
 "use client";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, Eye, Globe, Megaphone, MousePointerClick, Sparkles, Users } from "lucide-react";
+import type { CSSProperties } from "react";
+import { ArrowUpRight, BarChart3, CheckCircle2, Eye, Globe, Megaphone, MousePointerClick, Sparkles, Users } from "lucide-react";
 import type { CampaignRow, Store } from "@/lib/api";
 import { int, pct, useApi } from "@/lib/use-api";
 import { NeedStore } from "@/components/need-store";
-import { Badge, Button, ErrorNote, LiveDot, Metric, SectionTitle, Skeleton } from "@/components/ui";
+import { Badge, Button, ErrorNote, Metric, SectionTitle, Skeleton } from "@/components/ui";
+import { ToolVisual } from "@/components/visuals";
+import { TOOLS, TOOL_ORDER } from "@/lib/tools";
 import { useRange, type Analytics } from "@/lib/analytics";
 
 interface Integration { configPublished: boolean; hasCatalog: boolean }
@@ -125,7 +128,38 @@ function Overview({ store }: { store: Store }) {
         <p className="mt-4 flex items-center gap-2 text-xs text-ink-3"><BarChart3 className="size-3.5" aria-hidden />Numbers fill in once a live campaign reaches visitors who consented to analytics.</p>
       )}
       {loading ? <Skeleton className="mt-8 h-80" /> : <Checklist steps={steps} />}
+      <ToolsShowcase />
     </>
+  );
+}
+
+/** One preview per tool. Each card opens the tool, so the overview doubles as a way in. */
+function ToolsShowcase() {
+  return (
+    <section aria-labelledby="tools-h" className="mt-10">
+      <SectionTitle id="tools-h" sub="Each tool is a different way to reach shoppers. Open one to create or manage its campaigns.">Your tools</SectionTitle>
+      <ul className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {TOOL_ORDER.map((key, i) => {
+          const t = TOOLS[key];
+          return (
+            <li key={key} style={{ "--i": i } as CSSProperties}>
+              <Link href={`/app/tools/${key}`} className="card card-hover spot group relative block overflow-hidden p-4">
+                <ToolVisual tool={key} />
+                <div className="mt-4 flex items-start justify-between gap-3 px-1.5 pb-1.5">
+                  <div className="min-w-0">
+                    <div className="font-medium">{t.name}</div>
+                    <div className="mt-0.5 text-xs text-ink-3">{t.tagline}</div>
+                  </div>
+                  {t.shipped
+                    ? <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-white/[0.05] text-ink-2 transition-all group-hover:bg-brand-solid group-hover:text-white"><ArrowUpRight className="size-4 transition-transform group-hover:translate-x-px group-hover:-translate-y-px" /></span>
+                    : <Badge>Soon</Badge>}
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

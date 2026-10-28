@@ -7,6 +7,7 @@ import { useApi } from "@/lib/use-api";
 import { NeedStore } from "@/components/need-store";
 import { TOOLS } from "@/lib/tools";
 import { Badge, Button, Empty, ErrorNote, Input, PageHeader, Select, Skeleton, statusTone, tableClass } from "@/components/ui";
+import { ToolGallery, ToolVisual } from "@/components/visuals";
 
 function List({ store }: { store: Store }) {
   const base = `/api/v1/stores/${store.id}/campaigns`;
@@ -46,7 +47,7 @@ function List({ store }: { store: Store }) {
       <ErrorNote error={error ?? actionError} />
       {loading && <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16" />)}</div>}
       {!loading && data && data.length === 0 && (
-        <Empty icon={Megaphone} title="No campaigns yet" body="Describe a goal and let AI draft a campaign, or build one yourself. Nothing goes live until you approve it."
+        <Empty icon={Megaphone} visual={<ToolGallery tools={["toast", "feed", "email"]} />} title="No campaigns yet" body="Describe a goal and let AI draft a campaign, or build one yourself. Nothing goes live until you approve it."
           action={<div className="flex flex-wrap justify-center gap-2"><Link href="/app/studio"><Button variant="primary"><Sparkles className="size-4" />Generate with AI</Button></Link><Link href="/app/campaigns/new"><Button>Build manually</Button></Link></div>} />
       )}
       {!loading && data && data.length > 0 && (
@@ -57,7 +58,12 @@ function List({ store }: { store: Store }) {
               <tbody>
                 {rows.map((c) => (
                   <tr key={c.id}>
-                    <td><Link className="font-medium hover:text-brand hover:underline underline-offset-4" href={`/app/campaigns/${c.id}`}>{c.name}</Link></td>
+                    <td>
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-16 shrink-0 sm:w-20"><ToolVisual tool={c.tool} /></div>
+                        <Link className="font-medium transition-colors hover:text-brand hover:underline underline-offset-4" href={`/app/campaigns/${c.id}`}>{c.name}</Link>
+                      </div>
+                    </td>
                     <td className="text-ink-2">{TOOLS[c.tool]?.name ?? c.tool}</td>
                     <td><Badge tone={statusTone(c.status)} dot>{c.status}</Badge></td>
                     <td className="num whitespace-nowrap text-ink-2">{new Date(c.updatedAt).toLocaleDateString()}</td>

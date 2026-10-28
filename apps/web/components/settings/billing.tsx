@@ -5,6 +5,7 @@ import { api, ApiError, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge, Button, ErrorNote } from "../ui";
 import { Section } from "./section";
+import { CreditCard } from "lucide-react";
 
 interface Subscription { plan: string; status: string; usage: { pageviews: number; aiGenerations: number }; billingConfigured: boolean }
 
@@ -22,7 +23,7 @@ export function BillingSection({ store, isOwner }: { store: Store; isOwner: bool
   const canChange = isOwner && s?.billingConfigured;
 
   return (
-    <Section id="billing" title="Plan and usage" sub="Limits are enforced on the server. If a payment fails, the workspace falls back to Free limits until it is resolved.">
+    <Section id="billing" icon={CreditCard} title="Plan and usage" sub="Limits are enforced on the server. If a payment fails, the workspace falls back to Free limits until it is resolved.">
       <ErrorNote error={error ?? sub.error} />
       {s && (
         <p className="text-sm">Current plan: <span className="font-medium capitalize">{s.plan}</span> <Badge tone={s.status === "active" || s.status === "trialing" ? "ok" : "warn"}>{s.status.replace("_", " ")}</Badge>

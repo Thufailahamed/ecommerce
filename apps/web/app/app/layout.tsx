@@ -122,7 +122,10 @@ function Shell({ children }: { children: React.ReactNode }) {
           <div className="ml-3"><Logo /></div>
         </div>
         <VerifyBanner />
-        <main className="relative mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-10">{children}</main>
+        <main className="relative mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-10">
+          {/* Keyed by route so each page plays its entrance again when the user navigates. */}
+          <div key={path} className="reveal">{children}</div>
+        </main>
       </div>
     </div>
   );

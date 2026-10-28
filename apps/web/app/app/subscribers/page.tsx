@@ -4,6 +4,7 @@ import { Download, Users } from "lucide-react";
 import { apiErase, apiFile, apiPage, ApiError, type Contact, type ContactSync, type Store } from "@/lib/api";
 import { NeedStore } from "@/components/need-store";
 import { ProviderPanel } from "@/components/providers";
+import { Avatar, PhotoTile } from "@/components/visuals";
 import { Badge, Button, Empty, ErrorNote, Input, Notice, PageHeader, Select, Skeleton, tableClass } from "@/components/ui";
 
 const STATUS_LABEL = { none: "None", pending: "Waiting to confirm", subscribed: "Subscribed", unsubscribed: "Unsubscribed" } as const;
@@ -120,7 +121,7 @@ function View({ store }: { store: Store }) {
 
       {loading && rows.length === 0 && <Skeleton className="h-40" />}
       {!loading && !error && rows.length === 0 && (
-        <Empty icon={Users} title={email || filter !== "all" ? "No contacts match" : "No subscribers yet"} body={email || filter !== "all" ? "Try another status or address." : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
+        <Empty icon={Users} visual={<PhotoTile k="p-shopper" alt="" className="mx-auto h-36 w-56 max-w-full" />} title={email || filter !== "all" ? "No contacts match" : "No subscribers yet"} body={email || filter !== "all" ? "Try another status or address." : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
       )}
       {rows.length > 0 && (
         <div className="card overflow-hidden">
@@ -129,7 +130,12 @@ function View({ store }: { store: Store }) {
           <thead><tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3"><th className="font-medium">Email</th><th className="font-medium">Status</th><th className="font-medium">Came from</th><th className="font-medium">Signed up</th><th className="font-medium">Email platform</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{rows.map((c) => (
             <tr key={c.id}>
-              <td className="break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{c.email ?? c.phone ?? "–"}</td>
+              <td>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar seed={c.email ?? c.phone ?? "?"} />
+                  <span className="min-w-0 break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{c.email ?? c.phone ?? "–"}</span>
+                </div>
+              </td>
               <td><Badge tone={TONE[c.emailStatus]} dot>{STATUS_LABEL[c.emailStatus]}</Badge></td>
               <td className="text-ink-2">{where(c.source)}</td>
               <td className="num text-ink-2">{new Date(c.createdAt).toLocaleDateString()}</td>
