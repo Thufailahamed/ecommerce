@@ -8,14 +8,14 @@
   // Secrets (CREDENTIAL_KEY, RESEND_API_KEY, EMAIL_FROM, STRIPE_*, SHOPIFY_API_SECRET, TURNSTILE_SECRET) are set with
   // `wrangler secret put`, never here. See docs/deployment.md for what each one enables.
   "vars": {
-    "ALLOWED_ORIGIN": "http://localhost:3000",
-    "API_ORIGIN": "http://localhost:8787",
+    "ALLOWED_ORIGIN": "https://convertflow-web.thufailahamed627.workers.dev",
+    "API_ORIGIN": "https://convertflow-api.thufailahamed627.workers.dev",
     "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "convertflow", "database_id": "REPLACE_ME", "migrations_dir": "../../packages/database/migrations" }
+    { "binding": "DB", "database_name": "convertflow", "database_id": "e9f41fa4-5a92-469a-8890-ab7be3d8e007", "migrations_dir": "../../packages/database/migrations" }
   ],
-  "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "REPLACE_ME" }],
+  "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "dad973bac7d94973b84ca23c5bd46c57" }],
   "ai": { "binding": "AI" },
   "queues": {
     "producers": [{ "binding": "EVENTS_QUEUE", "queue": "convertflow-events" }],
