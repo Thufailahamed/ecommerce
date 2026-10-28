@@ -1,0 +1,88 @@
+# Status (2026-10-27)
+
+## Six-tool expansion: where it stands
+
+The platform is being extended from one campaign kind to six tools on one shared engine (see `architecture-v2.md`, `checklist.md`). **Three of the five customer-facing tools are shipped and verified end to end: the toast tool, the notification feed and email signup (capture and export only: nothing is sent from this app).** The upsell and SMS tools are **not built**; their contracts, slot rules, plan entitlements and an API gate that refuses to publish them exist, so nothing half-finished can reach shoppers. The six-tool platform is therefore **not** ready for the commercial beta described in the brief.
+
+| Tool | State |
+|---|---|
+| Toast (promotional, non-blocking) | Shipped: editor, live preview, storefront renderer, triggers, arbitration, analytics, e2e |
+| Notification feed | Shipped: bell + panel renderer, browser-local read state, editor with live preview, ordering, scheduling/expiry, targeting, analytics via the shared pipeline, e2e |
+| Upsell / recommendations | Not built |
+| SMS signup | Not built (contacts/consent foundation exists, see below) |
+| Email signup | Shipped: editor with live preview, popup / slide-in / bar / inline forms with an unticked consent box, optional first name, a discount code revealed only after confirming, double opt-in, consent proof stored from the published form, one-click unsubscribe, Subscribers page (list, erase, CSV export), retention, per-form request/confirmation counts, **copy of confirmed subscribers to Klaviyo and Mailchimp (adapters never run against the real services; the dashboard says "Not verified against the live provider" until a check with a real key passes)**, e2e. **Not built: sending any marketing email from this app** |
+| Per-tool analytics | Partial: per-campaign metrics only (feed opens count as impressions, item clicks as clicks) |
+| AI studio across tools | Extended for toast, feed, upsell and email (tool choice, per-tool configs, per-tool policy gate, merchant-owned consent wording, review step); SMS refused until it ships. **Tested against fakes only: the live Workers AI model has never been called** (see `checklist.md` Phase 7) |
+
+The tool names in the original brief are identical to a competitor's marketed product names, so the dashboard defaults to neutral names (Toasts, Notification feed, Upsells, SMS signup, Email signup) and each can be overridden with `NEXT_PUBLIC_TOOL_NAME_<KEY>`.
+
+**Verdict for the original single-campaign product: feature-complete for everything that can be built and tested without third-party accounts, and heavily tested, but NOT launch-ready.** The remaining blockers need accounts, credentials or people that do not exist yet (see "Launch blockers"). Nothing below claims more than was actually run.
+
+## Contacts and consent foundation (added after the figures below)
+Migration 0003, `apps/api/src/services/contacts.ts`, and the email tool built on them. **Run after the change: `pnpm verify` 24/24 (398 unit tests: contracts 50, database 14, campaign-engine 36, ai 8, integrations 6, storefront-sdk 87, api 154, web 43) and the full browser suite 59/59** (51 earlier + 8 for email; run as a full pass of 47 plus a rerun of the 12 toast tests after fixing a stale "email is Soon" assertion). SDK is 11,924 B gzip. The load test, backup drill, `pnpm audit` and secret scan were **not rerun** (the backup drill's source database still predates migration 0003). Migration 0003 has been applied to in-memory SQLite and the local D1 emulator, never to a real Cloudflare D1.
+
+The figures in the tables below predate this change.
+
+## Verified (actually executed)
+| What | Result |
+|---|---|
+| `pnpm verify` (typecheck + test + build, every package) | 24/24 tasks pass (rerun after the expansion) |
+| Unit + integration tests | **357**: contracts 49, database 9, campaign-engine 36, ai 8, integrations 6, storefront-sdk 77, api 134 (real migrations on in-memory SQLite), web 38 |
+| End-to-end, real Chromium vs the real stack (Worker on workerd + local D1/KV/Queue, built Next app, storefront on another origin, mock email server) | **51/51**: the original 29, 12 for the toast tool and 10 for the feed (see lists below) |
+| Accessibility (axe, WCAG 2 A/AA) | 0 serious/critical on every public and app screen, **light and dark** |
+| Load / integrity (local runtime; **not rerun after the expansion**) | 25 req/s, 1,246 events/s, p95 1.6 s, 20,500 events aggregated **exactly**, replay changes nothing |
+| Backup/restore drill (**reran and passed, but it reports 31 indexes and migration 0002 adds one, so its source database predates 0002; it does not prove the new schema**) | 25 tables, 20,561 rows restored byte-identical, 0 FK violations, 31/31 indexes, unique constraints intact |
+| `pnpm audit --prod`, secret scan (**not rerun after the expansion**; no dependencies were added) | clean |
+| SDK size | Core `cf.js` 10,278 B gzip; toast, feed, upsell and email are separate scripts of 2.7 to 3.7 KB each, loaded on demand; all together 23.0 KB (the build fails over 12 KB core, 35 KB total, or the 15 KB marketing claim, which now says "core"). It was 15,242 B in one file with 118 B of headroom before the split. |
+| OpenAPI | generated from real request schemas; a test fails if any route is undocumented or any documented route is not served |
+
+Toast end-to-end covers: tool navigation and honest "not available" pages; the server refusing to publish an unshipped tool even via the API; building a free-shipping toast with a live preview, approval and publish; an eligible visitor seeing the real remaining amount without focus being taken; ineligible visitors (wrong page, unknown cart, already-qualifying cart) seeing nothing; cart changes; axe on the toast; a 390 px layout; reduced motion; a recorded click and a purchase attributed once; remembered dismissal; consent respected; pause.
+
+Feed end-to-end covers: building and publishing cards through the editor with a live preview of the real feed; unread count for eligible cards only (targeting and expiry respected); the merchant's ordering; read state surviving a reload with consent and a different page adding its own unread card; keyboard (Enter opens, Escape closes and restores focus); axe on the open panel; outside click; a 390 px viewport; opens and clicks counted and a later purchase attributed once; consent respected (no persistence beyond the tab session, nothing sent); pausing removes the bell.
+
+End-to-end (original suite) covers: marketing page + interactive demo + pricing parity with the API; signup; **email confirmation gate**; editor with live preview; approve-and-publish; storefront show/hide by rule; dismissal; click tracking; consent (shown but not recorded); purchase attribution once; pause; mobile; **password reset** (single-use, signs out other devices); **two-step verification** (enrol, code login, recovery code once, disable); **team** (invite, wrong-account rejection, role, removal revokes access); **back-in-stock** (double opt-in, one alert, one-click unsubscribe); **promotion guardrail**; **holdout experiment** (both arms observed, honest verdict); CSP; dark-mode accessibility.
+
+## Bugs found by testing and fixed (not hypothetical)
+- **Every email would have failed in production**: `this.fetchFn(...)` throws "Illegal invocation" on Cloudflare Workers. Node tests cannot show it; the real runtime did. Fixed and covered by a test that reproduces the Workers behaviour.
+- Event ingestion queried D1 per request, and D1 is single-threaded, so reads stalled behind the consumer's writes (p95 18.8 s). Now KV + queue only on the hot path, and the consumer batches its writes (3 -> 25 req/s).
+- SDK kept showing a paused campaign from cache; URL validator accepted `/\evil.com` (open redirect) and leading whitespace; colour contrast; a `<select>` inside a `<label>` polluted the accessible name; a failed first publish discarded its own error message (editor remounted); a `drizzle-orm` duplicate; order double counted by webhook and pixel; an ordering leak in the invite route (403 vs 404).
+
+## Implemented
+Auth (PBKDF2, hashed sessions, CSRF origin check, rate limits, Turnstile, **password reset, email verification, TOTP 2FA + recovery codes**), **team invites with roles**, **multiple workspaces**, tenancy with 404-on-foreign-ids, campaign lifecycle (immutable versions, rollback, approval-staleness guard, kill switch), edge-served config, consent-gated analytics via queue (idempotent, batched, DLQ), last-click attribution **and randomised holdout experiments with a conservative z-test**, **back-in-stock alerts** (double opt-in, quota, one-click unsubscribe, retention), **promotions with a store-level discount ceiling** (AI can never create them), **hand-picked product cards**, catalog import (JSON/CSV) plus **live WooCommerce and BigCommerce sync**, AI generation via Workers AI with policy validation, plan limits incl. pageview hard stop, **Stripe checkout + customer portal**, Shopify webhook handler, AES-GCM credential storage, account deletion and store purge, daily cron, **OpenAPI**, **CSP and security headers**, request logging, CI.
+
+## Found and fixed during the expansion
+- Importing two pure helpers from `@convertflow/contracts` into the storefront bundle pulled in all of Zod: the SDK went from 6 KB to **107 KB gzip**. Caught by the size budget in the build; the helpers now live in a zod-free `@convertflow/contracts/slots` module (9 KB).
+- `remainingForFreeShipping` rounded 74.995 against a 75 threshold to "$0.00 away" while the cart was still short. Now rounds up and never shows less than one cent.
+- The SDK never cleared its "something is on screen" marker after a dismissal, so no other campaign could show for the rest of that page view.
+- A regex written through a shell heredoc silently contained backspace characters and never matched. All sources are now scanned for control characters.
+
+- The feed's "New" label was dimmed by a parent's opacity and failed colour contrast (about 3.7:1). Caught by axe in the e2e, fixed.
+- The feed queued its page-view event without flushing, so a shopper who never opened the bell was not counted until the page unloaded. Caught by a unit test, fixed.
+- An e2e "pause everything" step passed vacuously because it counted buttons before the list had loaded. Rewritten to wait for the rows and assert every card shows as paused.
+
+## Launch blockers (need you)
+1. **Cloudflare account**: create D1/KV/Queues (+DLQ), set secrets, deploy 3 Workers, DNS so web and API share a registrable domain (cookie is `SameSite=Lax`), add rate-limiting rules (the in-app limiter is per-isolate only), real `wrangler` ids. See `docs/deployment.md`.
+2. **Workers AI has never been called for real** (local mode cannot). The model id is an unconfirmed default; run real generations **for every tool** (the prompts, the 1500-token cap and the policy gate were only exercised with recorded/fake responses) and review quality/cost.
+3. **Stripe** (checkout, portal, webhooks) is tested against fakes/fixtures only. Do a test-mode run with real keys.
+4. **Email provider**: the Resend adapter is verified against a mock (including the Workers `fetch` constraint) but not against Resend itself. Verify a sending domain (SPF/DKIM) and send a real message.
+5. **Shopify** (only if distributing via the App Store): install/OAuth/token exchange, Admin API sync, and Shopify Billing are **not built**; theme embed, web pixel and toml are unverified drafts (`apps/shopify-app`).
+6. **WooCommerce/BigCommerce live sync** is tested against fakes only: confirm against a real store.
+7. **OpenNext/Cloudflare build** of the web app could not be verified on this Windows machine (symlink EPERM; it compiled and bundled up to that step). It is in the Linux CI job.
+8. **Legal**: Privacy/Terms are templates needing counsel; add company details, DPA, sub-processor list, cookie/consent wording.
+9. **Name**: "ConvertFlow" is an existing company in this category. Rename before launch (`NEXT_PUBLIC_BRAND_NAME` / `NEXT_PUBLIC_BRAND_SUFFIX`) and run a trademark search.
+10. **Klaviyo and Mailchimp**: the adapters (`packages/integrations/src/providers.ts`) follow the vendors' documented REST APIs but have **never been run against the real services**. With a test account for each: connect from the Subscribers page, confirm a signup, check the person arrives on the list with their consent time and first name, unsubscribe and check removal. Klaviyo's first-name handling (a profile import before the subscription job) and the required key scopes are the least certain parts. Until a real check passes, the dashboard says "Not verified against the live provider".
+11. **Host the whole `apps/storefront-sdk/dist/` directory**, not just `cf.js`: it now loads `cf-<tool>.<hash>.js` from the same directory on demand (`README.md`, `docs/storefront-sdk.md`). A merchant with a strict Content-Security-Policy must allow that origin for scripts. Not tested against a real CDN or CSP.
+
+## Known limitations (deliberate or not yet built)
+- **Platform cart detection is unverified on live stores.** Shopify (`/cart/add`, `/cart.js`, amounts assumed to be cents) and WooCommerce (`added_to_cart`) hooks are tested only against fakes. The generic `ConvertFlow.setCart()` / `trackAddToCart()` API is what is verified end to end.
+- Arbitration is by eligibility, not trigger timing: an eligible popup still waiting for exit intent suppresses a toast on that page (`architecture-v2.md`).
+- `pnpm verify` once reported the web tests as "no tests" while the Next build ran concurrently, and one SDK test run once reported 32 tests instead of 55 (55/55 on three reruns). Neither is root-caused.
+- **Email list sync is polling and queue based**: a copy to a provider happens a few seconds after the shopper confirms (the Subscribers page refreshes every 4 s for about two minutes while anything is waiting). Rate limits and outages back off up to 6 h and give up visibly after 8 attempts; a daily sweep re-queues anything stranded. Erasing someone unsubscribes them at the provider but does not delete their profile there. The discount code a form promises is the merchant's one shared code, not a personal one.
+- **Creative A/B variants** (testing copy A against copy B) are not built. Holdout experiments measure whether a campaign works at all, not which of two versions works better. No plan claims otherwise.
+- Product recommendations are manual picks, not algorithmic. Margin-aware promotions are a store-level discount ceiling, not per-product margin rules. **Autonomous AI optimisation is intentionally not built**: nothing should change live campaigns without a merchant's approval.
+- Experiment arms and purchases are reported by visitors' browsers, so they can be spoofed; results are labelled estimates. Holdouts only apply to consenting visitors.
+- Rate limiting is in-memory per isolate (best effort). CSP allows inline scripts (Next.js hydration), so it limits damage rather than preventing script injection.
+- No shared load numbers for production: local figures only. D1 is a single writer; the migration path is in `docs/architecture.md`.
+- No monitoring dashboards or paging wired up (structured logs per request exist; alert on DLQ depth and 5xx rate).
+- Web app has unit tests for the security-critical components and client, not exhaustive coverage of every page (the browser suite covers the flows).
+- Tests were run on one Windows machine. CI on Linux has not run yet.

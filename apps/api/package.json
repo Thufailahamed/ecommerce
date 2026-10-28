@@ -1,0 +1,29 @@
+{
+  "name": "@convertflow/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "build": "echo ok"
+  },
+  "dependencies": {
+    "@convertflow/ai": "workspace:*",
+    "@convertflow/campaign-engine": "workspace:*",
+    "@convertflow/contracts": "workspace:*",
+    "@convertflow/database": "workspace:*",
+    "@convertflow/integrations": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@libsql/client": "^0.15.0",
+    "@types/node": "^24.0.0",
+    "wrangler": "^4.153.0"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules
+.next
+.open-next
+.wrangler
+.turbo
+dist
+*.log
+.dev.vars
+.env*
+
+.state
+test-results
+playwright-report
+.local-dev

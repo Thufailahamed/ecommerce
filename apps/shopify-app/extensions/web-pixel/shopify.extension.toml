@@ -1,0 +1,27 @@
+api_version = "2026-10"
+
+[[extensions]]
+type = "web_pixel_extension"
+name = "ConvertFlow purchase pixel"
+handle = "convertflow-pixel"
+runtime_context = "strict"
+
+  [extensions.customer_privacy]
+  analytics = true
+  marketing = false
+  preferences = false
+  sale_of_data = "disabled"
+
+  [extensions.settings]
+  type = "object"
+
+    [extensions.settings.fields.site_key]
+    name = "Site key"
+    description = "ConvertFlow site key"
+    type = "single_line_text_field"
+    validations = [{ name = "min", value = "8" }]
+
+    [extensions.settings.fields.api_url]
+    name = "API URL"
+    description = "ConvertFlow API origin"
+    type = "single_line_text_field"

@@ -1,0 +1,21 @@
+{
+  "name": "@convertflow/storefront-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/render.ts",
+  "types": "./src/render.ts",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@convertflow/campaign-engine": "workspace:*",
+    "@convertflow/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jsdom": "^27.0.0"
+  }
+}

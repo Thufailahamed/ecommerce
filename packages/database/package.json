@@ -1,0 +1,23 @@
+{
+  "name": "@convertflow/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "echo ok",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@libsql/client": "^0.15.0",
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.11"
+  }
+}

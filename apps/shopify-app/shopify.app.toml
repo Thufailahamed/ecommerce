@@ -1,0 +1,24 @@
+# UNVERIFIED: written to Shopify's documented app configuration format but never deployed
+# (no Partner account was available). Replace placeholders, then run `shopify app deploy` from this directory.
+client_id = "REPLACE_WITH_PARTNER_DASHBOARD_CLIENT_ID"
+name = "ConvertFlow AI"
+application_url = "https://app.example.com"
+embedded = false
+
+[access_scopes]
+# Read-only catalog + inventory. Orders arrive via webhook; no customer data scopes are requested.
+scopes = "read_products,read_inventory"
+
+[auth]
+redirect_urls = ["https://api.example.com/api/v1/shopify/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled", "products/create", "products/update", "products/delete", "orders/create"]
+  uri = "https://api.example.com/api/v1/webhooks/shopify"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://api.example.com/api/v1/webhooks/shopify"

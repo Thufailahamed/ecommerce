@@ -1,0 +1,24 @@
+{%- comment -%}
+  App embed: loads the ConvertFlow storefront script on every page once the merchant switches it on
+  in Theme editor > App embeds. No theme files are edited. UNVERIFIED against a live theme.
+{%- endcomment -%}
+{%- if block.settings.site_key != blank -%}
+  <script
+    async
+    src="{{ block.settings.sdk_url | default: 'https://sdk.example.com/cf.js' }}"
+    data-site="{{ block.settings.site_key | escape }}"
+    data-api="{{ block.settings.api_url | default: 'https://api.example.com' }}"
+  ></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "ConvertFlow campaigns",
+  "target": "body",
+  "settings": [
+    { "type": "text", "id": "site_key", "label": "Site key", "info": "Copy from ConvertFlow > Settings > Install" },
+    { "type": "text", "id": "sdk_url", "label": "Script URL (advanced)" },
+    { "type": "text", "id": "api_url", "label": "API URL (advanced)" }
+  ]
+}
+{% endschema %}

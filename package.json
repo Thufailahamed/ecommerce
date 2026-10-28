@@ -1,0 +1,25 @@
+{
+  "name": "convertflow-ai",
+  "private": true,
+  "packageManager": "pnpm@12.5.1",
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "verify": "turbo run typecheck test build --concurrency=3",
+    "e2e": "pnpm --filter @convertflow/e2e e2e",
+    "dev:local": "node scripts/dev-local.mjs up",
+    "dev:db": "node scripts/dev-local.mjs db",
+    "dev:plan": "node scripts/dev-local.mjs plan",
+    "dev:reset": "node scripts/dev-local.mjs reset"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@libsql/client": "^0.15.0",
+    "@types/node": "^24.0.0",
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.5"
+  }
+}

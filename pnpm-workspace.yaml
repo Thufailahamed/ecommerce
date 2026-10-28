@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tests/*"
+allowBuilds:
+  esbuild: true
+  workerd: true
+overrides:
+  "glob@>=10.2.0 <10.5.0": "10.5.0"
+minimumReleaseAgeExclude:
+  - miniflare@5.20261023.0-beta
+  - wrangler@4.153.0

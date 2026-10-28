@@ -1,0 +1,11 @@
+{
+  "name": "@convertflow/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": { "e2e": "playwright test" },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.0.0"
+  }
+}

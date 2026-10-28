@@ -1,0 +1,6 @@
+api_version = "2026-10"
+
+[[extensions]]
+type = "theme"
+name = "ConvertFlow embed"
+handle = "convertflow-embed"

@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793081755948,
+      "tag": "0000_same_raider",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793087429765,
+      "tag": "0001_tiresome_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793095561071,
+      "tag": "0002_campaign_tool",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793107290710,
+      "tag": "0003_contacts_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793118940911,
+      "tag": "0004_upsell_relationships",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793126283717,
+      "tag": "0005_provider_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793128238265,
+      "tag": "0006_analytics_by_tool",
+      "breakpoints": true
+    }
+  ]
+}

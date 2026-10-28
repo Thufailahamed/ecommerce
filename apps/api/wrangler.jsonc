@@ -1,0 +1,30 @@
+{
+  // Resource ids below are placeholders: create them with `wrangler d1 create`, `wrangler kv namespace create`, `wrangler queues create`.
+  "name": "convertflow-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Secrets (CREDENTIAL_KEY, RESEND_API_KEY, EMAIL_FROM, STRIPE_*, SHOPIFY_API_SECRET, TURNSTILE_SECRET) are set with
+  // `wrangler secret put`, never here. See docs/deployment.md for what each one enables.
+  "vars": {
+    "ALLOWED_ORIGIN": "http://localhost:3000",
+    "API_ORIGIN": "http://localhost:8787",
+    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "convertflow", "database_id": "REPLACE_ME", "migrations_dir": "../../packages/database/migrations" }
+  ],
+  "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "REPLACE_ME" }],
+  "ai": { "binding": "AI" },
+  "queues": {
+    "producers": [{ "binding": "EVENTS_QUEUE", "queue": "convertflow-events" }],
+    // After 5 failed attempts a batch goes to the dead-letter queue instead of being lost. Alert on its depth.
+    "consumers": [{ "queue": "convertflow-events", "max_batch_size": 50, "max_batch_timeout": 5, "max_retries": 5, "dead_letter_queue": "convertflow-events-dlq" }]
+  },
+  "triggers": { "crons": ["0 3 * * *"] },
+  "env": {
+    "staging": { "name": "convertflow-api-staging", "vars": { "ALLOWED_ORIGIN": "https://staging.example.com", "API_ORIGIN": "https://api-staging.example.com" } },
+    "production": { "name": "convertflow-api-production", "vars": { "ALLOWED_ORIGIN": "https://app.example.com", "API_ORIGIN": "https://api.example.com" } }
+  }
+}
