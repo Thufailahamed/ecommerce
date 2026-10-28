@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, ApiError, type Store } from "@/lib/api";
 import { Badge, Button, ErrorNote, Field, Input } from "../ui";
 import { Section } from "./section";
+import { Percent } from "lucide-react";
 
 /** Margin guardrail: promotions are off until a store sets the highest discount it can afford. */
 export function DiscountGuardrail({ store, current, canEdit, onChanged }: { store: Store; current: number | null | undefined; canEdit: boolean; onChanged: () => void | Promise<void> }) {
@@ -18,7 +19,7 @@ export function DiscountGuardrail({ store, current, canEdit, onChanged }: { stor
 
   const on = typeof current === "number";
   return (
-    <Section id="promotions" title="Promotions guardrail" sub="Campaigns can show a discount code you create. To protect margin, promotions stay off until you set the biggest discount this store can afford. Anything higher is blocked at publish. AI never creates promotions.">
+    <Section id="promotions" icon={Percent} title="Promotions guardrail" sub="Campaigns can show a discount code you create. To protect margin, promotions stay off until you set the biggest discount this store can afford. Anything higher is blocked at publish. AI never creates promotions.">
       <ErrorNote error={error} />
       <p className="text-sm">Promotions: <Badge tone={on ? "ok" : "neutral"}>{on ? `On, up to ${current}% off` : "Off"}</Badge></p>
       {canEdit && (

@@ -1,10 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Users } from "lucide-react";
 import { apiErase, apiFile, apiPage, ApiError, type Contact, type ContactSync, type Store } from "@/lib/api";
 import { NeedStore } from "@/components/need-store";
 import { ProviderPanel } from "@/components/providers";
-import { Badge, Button, Empty, ErrorNote, Input, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Avatar, PhotoTile } from "@/components/visuals";
+import { Badge, Button, Empty, ErrorNote, Input, Notice, PageHeader, Select, Skeleton, tableClass } from "@/components/ui";
 
 const STATUS_LABEL = { none: "None", pending: "Waiting to confirm", subscribed: "Subscribed", unsubscribed: "Unsubscribed" } as const;
 const TONE = { none: "neutral", pending: "warn", subscribed: "ok", unsubscribed: "neutral" } as const;
@@ -101,34 +102,41 @@ function View({ store }: { store: Store }) {
 
   return (
     <>
-      <PageHeader title="Subscribers" sub="People who signed up through your email forms. Only people who confirmed from their inbox count as subscribed; anyone waiting to confirm is never contacted."
+      <PageHeader eyebrow="Audience" title="Subscribers" sub="People who signed up through your email forms. Only people who confirmed from their inbox count as subscribed; anyone waiting to confirm is never contacted."
         actions={<Button onClick={() => void exportCsv()} busy={exporting}><Download className="size-4" />Export subscribed (CSV)</Button>} />
       <ErrorNote error={error} />
-      {notice && <p role="status" className="mb-4 border-l-2 border-brand bg-brand-soft px-3 py-2 text-sm">{notice}</p>}
+      {notice && <div role="status" className="mb-6"><Notice tone="brand">{notice}</Notice></div>}
 
       <ProviderPanel store={store} refreshKey={rows.map((c) => (c.sync ?? []).map((s) => `${s.provider}:${s.status}:${s.action}`).join(",")).join("|")} />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Select aria-label="Status" className="w-52" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
+      <div className="card-flat mb-5 flex flex-wrap items-center gap-2 p-2">
+        <Select aria-label="Status" className="w-full sm:w-52" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
           <option value="all">All contacts</option><option value="subscribed">Subscribed</option><option value="pending">Waiting to confirm</option><option value="unsubscribed">Unsubscribed</option>
         </Select>
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setEmail(lookup.trim()); }}>
-          <Input aria-label="Find by exact email address" type="search" placeholder="Find an exact email address" className="w-64" value={lookup} onChange={(e) => { setLookup(e.target.value); if (!e.target.value) setEmail(""); }} />
+        <form className="flex min-w-0 flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); setEmail(lookup.trim()); }}>
+          <Input aria-label="Find by exact email address" type="search" placeholder="Find an exact email address" className="min-w-0 flex-1 sm:max-w-sm" value={lookup} onChange={(e) => { setLookup(e.target.value); if (!e.target.value) setEmail(""); }} />
           <Button type="submit">Find</Button>
         </form>
       </div>
 
       {loading && rows.length === 0 && <Skeleton className="h-40" />}
       {!loading && !error && rows.length === 0 && (
-        <Empty title={email || filter !== "all" ? "No contacts match" : "No subscribers yet"} body={email || filter !== "all" ? "Try another status or address." : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
+        <Empty icon={Users} visual={<PhotoTile k="p-shopper" alt="" className="mx-auto h-36 w-56 max-w-full" />} title={email || filter !== "all" ? "No contacts match" : "No subscribers yet"} body={email || filter !== "all" ? "Try another status or address." : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
       )}
       {rows.length > 0 && (
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-3"><th className="py-2 font-medium">Email</th><th className="font-medium">Status</th><th className="font-medium">Came from</th><th className="font-medium">Signed up</th><th className="font-medium">Email platform</th><th><span className="sr-only">Actions</span></th></tr></thead>
+        <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+        <table className={tableClass}>
+          <thead><tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3"><th className="font-medium">Email</th><th className="font-medium">Status</th><th className="font-medium">Came from</th><th className="font-medium">Signed up</th><th className="font-medium">Email platform</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{rows.map((c) => (
-            <tr key={c.id} className="border-b border-line">
-              <td className="py-3 break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{c.email ?? c.phone ?? "–"}</td>
-              <td><Badge tone={TONE[c.emailStatus]}>{STATUS_LABEL[c.emailStatus]}</Badge></td>
+            <tr key={c.id}>
+              <td>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar seed={c.email ?? c.phone ?? "?"} />
+                  <span className="min-w-0 break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{c.email ?? c.phone ?? "–"}</span>
+                </div>
+              </td>
+              <td><Badge tone={TONE[c.emailStatus]} dot>{STATUS_LABEL[c.emailStatus]}</Badge></td>
               <td className="text-ink-2">{where(c.source)}</td>
               <td className="num text-ink-2">{new Date(c.createdAt).toLocaleDateString()}</td>
               <td>{(c.sync ?? []).length === 0 ? <span className="text-ink-3">–</span> : <span className="flex flex-wrap gap-1">{(c.sync ?? []).map((s) => { const l = syncLabel(s); return <span key={s.provider} title={s.error ?? undefined}><Badge tone={l.tone}>{l.text}</Badge></span>; })}</span>}</td>
@@ -140,9 +148,11 @@ function View({ store }: { store: Store }) {
             </tr>
           ))}</tbody>
         </table>
+        </div>
+        </div>
       )}
       {cursor && <div className="mt-4"><Button onClick={() => void more()} busy={loading}>Load more</Button></div>}
-      <p className="mt-8 text-xs text-ink-3">Erasing deletes the contact and their consent history, and takes them off any connected Klaviyo or Mailchimp list (their profile there is not deleted). If they had unsubscribed, a hashed entry (not their address) stays so they are never re-added by mistake.</p>
+      <p className="mt-8 text-xs leading-relaxed text-ink-3">Erasing deletes the contact and their consent history, and takes them off any connected Klaviyo or Mailchimp list (their profile there is not deleted). If they had unsubscribed, a hashed entry (not their address) stays so they are never re-added by mistake.</p>
     </>
   );
 }

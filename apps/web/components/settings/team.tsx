@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge, Button, ErrorNote, Field, Input, Select } from "../ui";
 import { Section } from "./section";
+import { Users } from "lucide-react";
 
 interface Team {
   members: { userId: string; email: string; role: string; joinedAt: string }[];
@@ -30,7 +31,7 @@ export function TeamSection({ orgId, myRole, myUserId }: { orgId: string; myRole
   };
 
   return (
-    <Section id="team" title="Team" sub="Owners and admins can invite people. Viewers can look but not change anything; editors can build campaigns; admins can publish.">
+    <Section id="team" icon={Users} title="Team" sub="Owners and admins can invite people. Viewers can look but not change anything; editors can build campaigns; admins can publish.">
       <ErrorNote error={error ?? loadError} />
       <table className="w-full text-sm">
         <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-3"><th className="py-2 font-medium">Member</th><th className="font-medium">Role</th><th /></tr></thead>
@@ -72,7 +73,7 @@ export function TeamSection({ orgId, myRole, myUserId }: { orgId: string; myRole
         </form>
       )}
       {invited && (
-        <div role="status" className="space-y-2 border-l-2 border-ok bg-ok/10 px-3 py-2.5 text-sm">
+        <div role="status" className="space-y-2 rounded-xl border border-ok/30 bg-ok/10 px-4 py-3 text-sm">
           <p>{invited.emailed ? `We emailed ${invited.email}.` : `Email delivery isn't configured, so share this link with ${invited.email} yourself.`} The link works for that address only and expires in 7 days.</p>
           {invited.inviteUrl && (
             <div className="flex items-center gap-2">

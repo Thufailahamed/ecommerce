@@ -55,7 +55,8 @@ export function Scaled({ children, width = 1000, height = 625, className = "" }:
   const inner = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const b = box.current, i = inner.current;
-    if (!b || !i) return;
+    // Older test environments (jsdom) have no ResizeObserver; the preview then stays at scale(0), which is harmless.
+    if (!b || !i || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => { i.style.transform = `scale(${b.clientWidth / width})`; });
     ro.observe(b);
     return () => ro.disconnect();

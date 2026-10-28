@@ -110,7 +110,7 @@ function ConditionRow({ c, onChange, onRemove }: { c: Condition; onChange(c: Con
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="border-t border-line py-6 first:border-t-0 first:pt-0"><h2 className="mb-4 text-sm font-semibold">{title}</h2><div className="space-y-4">{children}</div></section>;
+  return <section className="card mb-5 space-y-4 p-5 md:p-6"><h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">{title}</h2><div className="space-y-4">{children}</div></section>;
 }
 
 export function CampaignEditor({ store, campaign, initial, tool }: { store: Store; campaign?: CampaignRow; initial?: unknown; tool?: EditorTool }) {
@@ -297,7 +297,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             </Field>
             <Field label="Privacy policy link" hint="Path or https URL"><Input value={cfg.form.privacyUrl} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, privacyUrl: e.target.value } }))} /></Field>
             <Field label="Message after signing up" hint="Shoppers always confirm from their inbox first (double opt-in)."><Input maxLength={160} value={cfg.form.pendingMessage} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, pendingMessage: e.target.value } }))} /></Field>
-            <p className="border-l-2 border-brand bg-brand-soft px-3 py-2 text-xs">Confirmed subscribers appear under Subscribers. You can export them as a CSV or have them copied automatically to Klaviyo or Mailchimp (connect one under Subscribers). This app does not send marketing email itself. Have your consent wording reviewed for the regions you sell to.</p>
+            <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-xs leading-relaxed">Confirmed subscribers appear under Subscribers. You can export them as a CSV or have them copied automatically to Klaviyo or Mailchimp (connect one under Subscribers). This app does not send marketing email itself. Have your consent wording reviewed for the regions you sell to.</p>
           </Section>
         )}
 
@@ -386,7 +386,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           <Select aria-label="Add rule" value="" onChange={(e) => { const f = RULE_FIELDS.find((x) => x.id === e.target.value); if (f) patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: [...c.targeting.conditions, f.make()] } })); }}>
             <option value="">+ Add a rule…</option>{RULE_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
           </Select>
-          <p className="border-l-2 border-brand bg-brand-soft px-3 py-2 text-sm"><span className="font-medium">In plain English:</span> {summary}.</p>
+          <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-sm leading-relaxed"><span className="font-medium">In plain English:</span> {summary}.</p>
         </Section>
 
         <Section title="Limits and goal">
@@ -443,7 +443,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
 
       <div className="lg:sticky lg:top-6 lg:self-start">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Live preview</h2>
+          <h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">Live preview</h2>
           <div className="flex gap-1" role="group" aria-label="Device">
             <Button variant={device === "desktop" ? "secondary" : "ghost"} aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")}><Monitor className="size-4" />Desktop</Button>
             <Button variant={device === "mobile" ? "secondary" : "ghost"} aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")}><Smartphone className="size-4" />Mobile</Button>
@@ -455,7 +455,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           <ErrorNote error={error} />
           {issues.length > 0 && <ul className="list-disc pl-5 text-sm text-danger">{issues.map((i) => <li key={i}>{i}</li>)}</ul>}
           {!check.success && <ul className="list-disc pl-5 text-sm text-danger">{check.error.issues.slice(0, 4).map((i) => <li key={i.path.join(".") + i.message}>{i.path.join(".")}: {i.message}</li>)}</ul>}
-          {warnings.map((w) => <p key={w} className="border-l-2 border-warn bg-warn/10 px-3 py-2 text-sm">{w}</p>)}
+          {warnings.map((w) => <p key={w} className="rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-relaxed">{w}</p>)}
 
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5" checked={approved} disabled={!check.success} onChange={(e) => setApproved(e.target.checked)} />

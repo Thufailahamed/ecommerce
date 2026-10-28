@@ -1,4 +1,5 @@
 import { SiteFooter, SiteHeader } from "@/components/marketing/chrome";
+import { LegalHero } from "@/components/legal-hero";
 
 export const metadata = { title: "Privacy" };
 
@@ -7,8 +8,7 @@ export default function Privacy() {
     <div>
       <SiteHeader />
       <main className="wrap max-w-3xl pb-16 pt-32">
-        <p className="eyebrow">Legal</p>
-        <h1 className="display mt-3 text-5xl">Privacy</h1>
+        <LegalHero title="Privacy" />
         <p className="mt-5 rounded-lg border border-warn/40 bg-warn/10 px-4 py-3 text-sm">Draft template. Have counsel review and complete it (legal entity, contact, processors, retention) before launch.</p>
         <div className="mt-8 space-y-5 text-ink-2">
           <p><strong className="text-ink">Merchants.</strong> We store your account email, store configuration, campaigns and catalog data you provide.</p>

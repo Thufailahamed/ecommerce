@@ -41,11 +41,11 @@ export function ProductLinks({ store }: { store: Store }) {
 
   return (
     <section aria-labelledby="links-heading" className="mt-10">
-      <h2 id="links-heading" className="mb-1 text-sm font-semibold">Product links</h2>
+      <h2 id="links-heading" className="mb-2 font-display text-sm font-bold uppercase tracking-[0.14em]">Product links</h2>
       <p className="mb-4 max-w-2xl text-sm text-ink-2">Tell recommendations which products go together, or which to offer when one is sold out. Higher weight is shown first. Only products from your catalog can be linked.</p>
       <ErrorNote error={error ?? links.error ?? catalog.error} />
       {products.length < 2 ? (
-        <p className="border border-dashed border-line px-4 py-6 text-sm text-ink-2">Import at least two products into your catalog (Settings) to link them.</p>
+        <p className="rounded-2xl border border-dashed border-line-strong bg-surface/50 px-5 py-8 text-center text-sm text-ink-2">Import at least two products into your catalog (Settings) to link them.</p>
       ) : (
         <form className="grid max-w-3xl gap-3 sm:grid-cols-[1fr_9rem_1fr_6rem_auto] sm:items-end" onSubmit={add}>
           <Field label="Product"><Select required value={from} onChange={(e) => setFrom(e.target.value)}><option value="">Choose…</option>{products.map((p) => <option key={p.id} value={p.externalId}>{p.title}</option>)}</Select></Field>

@@ -34,17 +34,17 @@ export function StudioReview({ result, domain, currency }: { result: StudioResul
     <div className="space-y-5" data-testid="studio-review">
       <div className="flex items-center gap-2"><Badge tone="neutral">{TOOLS[tool].name}</Badge><span className="text-sm text-ink-3">Draft: not live</span></div>
       <CampaignPreview config={cfg} device="desktop" domain={domain} {...(currency ? { currency } : {})} />
-      <div className="border-l-2 border-brand bg-brand-soft px-4 py-3 text-sm"><div className="mb-1 font-medium">Why this campaign</div>{result.explanation}</div>
+      <div className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-sm leading-relaxed"><div className="mb-1 font-medium">Why this campaign</div>{result.explanation}</div>
 
       {repairs.length > 0 && (
-        <section aria-labelledby="studio-repairs" className="border border-line px-4 py-3 text-sm">
+        <section aria-labelledby="studio-repairs" className="rounded-xl border border-line bg-canvas/50 px-4 py-3 text-sm">
           <h3 id="studio-repairs" className="mb-1 font-medium">Changed by the server before saving</h3>
           <p className="mb-2 text-ink-3">The AI does not control these. Check each one.</p>
           <ul className="list-disc space-y-1 pl-5">{repairs.map((r) => <li key={r}>{r}</li>)}</ul>
         </section>
       )}
       {advice.length > 0 && (
-        <section aria-labelledby="studio-advice" className="border border-line px-4 py-3 text-sm">
+        <section aria-labelledby="studio-advice" className="rounded-xl border border-line bg-canvas/50 px-4 py-3 text-sm">
           <h3 id="studio-advice" className="mb-1 font-medium">Check before you publish</h3>
           <ul className="list-disc space-y-1 pl-5">{advice.map((r) => <li key={r}>{r}</li>)}</ul>
         </section>

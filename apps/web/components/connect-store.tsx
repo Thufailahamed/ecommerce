@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button, ErrorNote, Field, Input, Select } from "./ui";
+import { Mascot } from "./illustrations";
 
 const PLATFORMS = [
   { id: "custom", label: "Any website (script snippet)" },
@@ -34,9 +35,13 @@ export function ConnectStore() {
   }
 
   return (
-    <form onSubmit={submit} className="max-w-lg space-y-5">
-      <h2 className="font-display text-xl font-semibold">Connect your store</h2>
-      <p className="text-sm text-ink-2">Tell us where campaigns will run. You&apos;ll get a one-line snippet that works on any platform.</p>
+    <form onSubmit={submit} className="card mx-auto max-w-xl space-y-5 p-6 md:p-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="eyebrow pt-2">Get started</div>
+        <Mascot mood="happy" size={72} />
+      </div>
+      <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight">Connect your store</h2>
+      <p className="text-sm leading-relaxed text-ink-2">Tell us where campaigns will run. You&apos;ll get a one-line snippet that works on any platform.</p>
       <ErrorNote error={error} />
       <Field label="Store name"><Input required value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="Store domain" hint="For example shop.example.com"><Input required value={domain} onChange={(e) => setDomain(e.target.value)} /></Field>

@@ -23,7 +23,7 @@ export function ProviderPanel({ store, refreshKey }: { store: Store; /** Changes
   useEffect(() => { if (seen.current !== refreshKey) { seen.current = refreshKey; void providers.reload(); } }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section aria-labelledby="prov-h" className="mb-10">
-      <h2 id="prov-h" className="mb-1 text-sm font-semibold">Copy subscribers to your email platform</h2>
+      <h2 id="prov-h" className="mb-2 font-display text-sm font-bold uppercase tracking-[0.14em]">Copy subscribers to your email platform</h2>
       <p className="mb-4 max-w-2xl text-sm text-ink-2">
         Connect Klaviyo or Mailchimp and everyone who confirms their subscription is added to the list you choose. Only confirmed subscribers are ever sent. If someone unsubscribes, they are taken off that list too. This app does not send marketing email itself.
       </p>
@@ -88,7 +88,7 @@ function ProviderCard({ store, view, onChange }: { store: Store; view: ProviderV
           {/* Honest status: a connection is only called verified once a check with the merchant's real key has passed against the real service. */}
           {view.verified
             ? <p>Verified with {view.label} on {new Date(view.verifiedAt!).toLocaleDateString()}.</p>
-            : <p className="border-l-2 border-warn bg-warn/10 px-3 py-2 text-xs">Not verified against the live provider. This integration follows {view.label}&apos;s public API but has not been tested against the real service by us. Use Check connection with your real key to verify it.</p>}
+            : <p className="rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-xs leading-relaxed">Not verified against the live provider. This integration follows {view.label}&apos;s public API but has not been tested against the real service by us. Use Check connection with your real key to verify it.</p>}
           {view.status === "error" && view.lastError && <ErrorNote error={view.lastError} />}
           <p>{view.listId ? <>Adding confirmed subscribers to <strong>{view.listName}</strong>.</> : <strong>No list chosen yet: nothing is being copied.</strong>}</p>
 

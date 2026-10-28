@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, ApiError, type Store } from "@/lib/api";
 import { Badge, Button, ErrorNote, Field, Input } from "../ui";
 import { Section } from "./section";
+import { RefreshCw } from "lucide-react";
 
 interface Connection { connected: boolean; kind: string | null }
 
@@ -41,7 +42,7 @@ export function CatalogConnect({ store, connection, onChanged }: { store: Store;
   }
 
   return (
-    <Section id="catalog-connect" title={`${woo ? "WooCommerce" : "BigCommerce"} catalog sync`}
+    <Section id="catalog-connect" icon={RefreshCw} title={`${woo ? "WooCommerce" : "BigCommerce"} catalog sync`}
       sub={woo ? "Create a read-only REST API key in WooCommerce (Settings, Advanced, REST API) and paste it here. Keys are encrypted and requests only go to your registered domain." : "Create an API account with read-only Products scope in BigCommerce and paste the store hash and access token. Credentials are encrypted."}>
       <ErrorNote error={error} />
       <p className="text-sm">Status: <Badge tone={connection?.connected ? "ok" : "warn"}>{connection?.connected ? "Connected" : "Not connected"}</Badge></p>

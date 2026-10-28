@@ -4,6 +4,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Badge, Button, ErrorNote, Field, Input } from "../ui";
 import { Section } from "./section";
+import { Building2 } from "lucide-react";
 
 /** Agencies run one workspace per client: each has its own stores, team and plan. */
 export function WorkspacesSection() {
@@ -19,7 +20,7 @@ export function WorkspacesSection() {
   }
 
   return (
-    <Section id="workspaces" title="Workspaces" sub="Each workspace has its own stores, team and plan. Create one per client if you manage stores for others.">
+    <Section id="workspaces" icon={Building2} title="Workspaces" sub="Each workspace has its own stores, team and plan. Create one per client if you manage stores for others.">
       <ErrorNote error={error} />
       <ul className="divide-y divide-line border-y border-line text-sm">
         {me.organizations.map((o) => <li key={o.id} className="flex items-center justify-between py-2.5"><span>{o.name}</span><Badge>{o.role}</Badge></li>)}
