@@ -1,54 +1,24 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Monitor, Plus, Smartphone, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, History, Layers, Monitor, Palette, Rocket, Settings2, ShieldCheck, Smartphone, Sparkles, Tag, Target, Trash2, X, FlaskConical, type LucideIcon } from "lucide-react";
 import { CampaignConfig, type Condition } from "@convertflow/contracts";
 import { describeRuleGroup } from "@convertflow/campaign-engine";
 import { api, ApiError, type CampaignRow, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { TOOLS } from "@/lib/tools";
+import { defaultConfig, type EditorTool } from "@/lib/campaign-defaults";
 import { Badge, Button, ErrorNote, Field, Input, Select, Textarea, statusTone } from "./ui";
 import { CampaignPreview, type Device } from "./campaign-preview";
+import { VersionHistory } from "./version-history";
 
 type Cfg = CampaignConfig;
 
-export type EditorTool = "toast" | "feed" | "email" | "upsell";
+export { defaultConfig, type EditorTool };
 
 type RecOptions = NonNullable<Cfg["recommend"]>;
-
-export const defaultConfig = (tool?: EditorTool): Cfg => {
-  const base: Cfg = {
-    schemaVersion: 1, name: "New campaign", format: "popup",
-    creative: { headline: "Welcome in", body: "Take a look at what's new.", ctaLabel: "Shop now", ctaUrl: "/collections/all" },
-    style: { background: "#FFFFFF", text: "#191A1B", accent: "#003FFF", accentText: "#FFFFFF", radius: 8, placement: "center" },
-    trigger: { type: "delay", seconds: 5 },
-    targeting: { match: "all", conditions: [] },
-    schedule: {}, frequency: { maxImpressionsPerSession: 1, suppressAfterDismissDays: 7, suppressAfterClickDays: 30 },
-    priority: 50, goal: { type: "clicks" },
-  };
-  if (tool === "feed") {
-    return { ...base, name: "New notification", tool: "feed", format: "feed_item", feed: { category: "Updates", order: 100, audience: "public", position: "bottom_right" },
-      creative: { ...base.creative, headline: "A new collection just dropped", body: "Take a look at what's new this week." }, trigger: { type: "immediate" } };
-  }
-  if (tool === "email") {
-    return { ...base, name: "New email signup", tool: "email", format: "popup", goal: { type: "subscribe" },
-      creative: { ...base.creative, headline: "Join our email list", body: "News and offers, straight to your inbox.", ctaLabel: "Sign up", ctaUrl: "/" },
-      form: {
-        collect: { email: true, phone: false, firstName: false }, defaultCountry: "US",
-        consentText: "I agree to receive marketing emails from this store. I can unsubscribe at any time.",
-        consentCheckbox: true, privacyUrl: "/policies/privacy-policy", doubleOptIn: true,
-        successMessage: "Thanks. You're signed up.", pendingMessage: "Check your inbox to confirm your subscription.",
-      } };
-  }
-  if (tool === "upsell") {
-    return { ...base, name: "New recommendations", tool: "upsell", format: "recommendation", goal: { type: "add_to_cart" }, trigger: { type: "immediate" },
-      creative: { ...base.creative, headline: "You might also like", body: "", ctaLabel: "Add to cart", ctaUrl: "/" },
-      targeting: { match: "all", conditions: [{ field: "page_type", op: "in", value: ["product"] }] },
-      recommend: { source: "same_collection", productIds: [], collectionIds: [], excludeProductIds: [], maxProducts: 3, layout: "row", placement: "product_page", showPrice: true, onlyAvailable: true, addToCart: true } };
-  }
-  return tool === "toast"
-    ? { ...base, name: "New toast", tool: "toast", format: "toast", toast: { kind: "announcement", corner: "bottom_left", animation: "slide" }, creative: { ...base.creative, headline: "Something new just landed", body: "" } }
-    : base;
-};
 
 const TOAST_KINDS: { id: NonNullable<Cfg["toast"]>["kind"]; label: string; hint: string }[] = [
   { id: "announcement", label: "Announcement", hint: "A short message with a button." },
@@ -109,8 +79,66 @@ function ConditionRow({ c, onChange, onRemove }: { c: Condition; onChange(c: Con
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="card mb-5 space-y-4 p-5 md:p-6"><h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">{title}</h2><div className="space-y-4">{children}</div></section>;
+/** One group of controls inside a builder panel. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="space-y-4 border-b border-line px-5 py-5 last:border-b-0"><h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">{title}</h2><div className="space-y-4">{children}</div></section>;
+}
+
+type TabId = "content" | "design" | "audience" | "display" | "offer" | "test" | "history";
+const TABS: { id: TabId; label: string; icon: LucideIcon; hint: string }[] = [
+  { id: "content", label: "Content", icon: Layers, hint: "What the shopper reads and clicks" },
+  { id: "design", label: "Design", icon: Palette, hint: "Colours and shape" },
+  { id: "audience", label: "Targeting", icon: Target, hint: "Who it shows to, and where" },
+  { id: "display", label: "Display", icon: Settings2, hint: "When it appears, how often, and for how long" },
+  { id: "offer", label: "Offer", icon: Tag, hint: "An optional discount code" },
+  { id: "test", label: "Test", icon: FlaskConical, hint: "Measure the real effect with a control group" },
+  { id: "history", label: "History", icon: History, hint: "Published versions you can roll back to" },
+];
+
+/**
+ * Full-screen builder, rendered straight under <body>. The app shell animates its page wrapper with a transform,
+ * which would otherwise become the containing block of a position:fixed child and squash the builder. While it
+ * is open the rest of the page is inert, so keyboard focus and screen readers cannot wander into the hidden app.
+ */
+function BuilderHost({ children }: { children: ReactNode }) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const behind = Array.from(document.body.children).filter((c) => c !== el && !c.hasAttribute("inert"));
+    behind.forEach((c) => c.setAttribute("inert", ""));
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    setHost(el);
+    return () => { behind.forEach((c) => c.removeAttribute("inert")); document.body.style.overflow = overflow; el.remove(); };
+  }, []);
+  return host ? createPortal(children, host) : null;
+}
+
+/** Right-hand drawer where the merchant reviews and approves before anything goes live. */
+function LaunchDrawer({ open, onClose, children }: { open: boolean; onClose(): void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); prev?.focus?.(); };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button type="button" aria-label="Close review" tabIndex={-1} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby="launch-h" tabIndex={-1} className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-surface shadow-2xl outline-none">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <h2 id="launch-h" className="font-display text-sm font-bold uppercase tracking-[0.14em]">Review and launch</h2>
+          <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink" onClick={onClose}><X className="size-5" /></button>
+        </div>
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export function CampaignEditor({ store, campaign, initial, tool }: { store: Store; campaign?: CampaignRow; initial?: unknown; tool?: EditorTool }) {
@@ -135,6 +163,9 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
   const [issues, setIssues] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
   const [dirty, setDirty] = useState(!campaign);
+  const [tab, setTab] = useState<TabId>("content");
+  const [pane, setPane] = useState<"edit" | "preview">("edit");
+  const [launching, setLaunching] = useState(false);
 
   const base = `/api/v1/stores/${store.id}/campaigns`;
   const catalog = useApi<{ id: string; externalId: string; title: string; url: string | null; handle: string | null; imageUrl: string | null }[]>(`/api/v1/stores/${store.id}/products`);
@@ -164,16 +195,16 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
   };
 
   /**
-   * `navigate` moves to the saved campaign's page (a remount). When publishing we do NOT navigate until it
-   * succeeds: remounting would throw away the error message if the server rejects the publish. The URL is
-   * updated in place instead, so a refresh still lands on the saved draft.
+   * `navigate` moves to the saved campaign's page (a remount). When publishing we do NOT touch the URL until the
+   * publish succeeds: any URL change remounts the page (the app shell keys it by path), which would throw away the
+   * error message if the server rejects the publish. The saved draft is kept in `row`, so retrying updates it.
    */
   async function save(navigate = true): Promise<CampaignRow | null> {
     setBusy("save"); setError(null); setIssues([]);
     try {
       const r = row ? await api<CampaignRow>(`${base}/${row.id}`, { method: "PUT", body: cfg }) : await api<CampaignRow>(base, { method: "POST", body: cfg });
       setRow(r); setDirty(false);
-      if (!row) { if (navigate) router.replace(`/app/campaigns/${r.id}`); else window.history.replaceState(null, "", `/app/campaigns/${r.id}`); }
+      if (!row && navigate) router.replace(`/app/campaigns/${r.id}`);
       return r;
     } catch (e) { fail(e); return null; } finally { setBusy(null); }
   }
@@ -186,21 +217,85 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
     try {
       await api(`${base}/${saved.id}/publish`, { method: "POST", body: { approve: true, approvedUpdatedAt: saved.updatedAt } });
       const fresh = await api<CampaignRow>(`${base}/${saved.id}`);
-      setRow(fresh); setApproved(false);
+      setRow(fresh); setApproved(false); setLaunching(false);
       if (wasNew) router.replace(`/app/campaigns/${saved.id}`); // now it is live: show the full page with version history
     } catch (e) { fail(e); } finally { setBusy(null); }
   }
 
   const isLive = row?.status === "active" || row?.status === "scheduled";
 
+  const tabs = TABS.filter((t) => (t.id !== "offer" || !isUpsell) && (t.id !== "history" || !!row));
+  const current = tabs.some((t) => t.id === tab) ? tab : "content";
+  const meta = TABS.find((t) => t.id === current)!;
+  const toolName = cfg.tool ? TOOLS[cfg.tool].name : "Campaign";
+  const issueCount = check.success ? 0 : check.error.issues.length;
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const i = tabs.findIndex((t) => t.id === current);
+    const next = e.key === "ArrowDown" || e.key === "ArrowRight" ? i + 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+    if (next === null) return;
+    e.preventDefault();
+    const t = tabs[(next + tabs.length) % tabs.length]!;
+    setTab(t.id);
+    document.getElementById(`tab-${t.id}`)?.focus();
+  };
+  const panel = (id: TabId, children: ReactNode) => <div key={id} role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} hidden={current !== id}>{children}</div>;
+
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,420px)_1fr]">
-      <div>
-        <div className="mb-5 flex items-center gap-2">
-          <Input aria-label="Campaign name" value={cfg.name} onChange={(e) => patch((c) => ({ ...c, name: e.target.value }))} className="font-medium" />
-          {row && <Badge tone={statusTone(row.status)}>{row.status}</Badge>}
+    <BuilderHost><div className="fixed inset-0 z-40 flex flex-col bg-canvas">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-surface/80 px-3 py-2 backdrop-blur sm:px-4">
+        <Link href="/app/campaigns" aria-label="Back to campaigns" onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave without saving?")) e.preventDefault(); }}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-2 transition-colors hover:bg-white/[0.06] hover:text-ink">
+          <ArrowLeft className="size-4" aria-hidden /><span className="hidden sm:inline">Campaigns</span>
+        </Link>
+        <span aria-hidden className="hidden h-5 w-px bg-line sm:block" />
+        <span className="hidden text-sm text-ink-3 md:inline">{toolName}</span>
+        <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto sm:max-w-sm sm:flex-1">
+          <Input aria-label="Campaign name" value={cfg.name} onChange={(e) => patch((c) => ({ ...c, name: e.target.value }))} className="h-9 min-w-0 flex-1 font-medium" />
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-white/[0.02] p-0.5 lg:hidden" role="group" aria-label="View">
+            <button type="button" aria-pressed={pane === "edit"} onClick={() => setPane("edit")} className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${pane === "edit" ? "bg-brand-solid text-white" : "text-ink-2"}`}>Edit</button>
+            <button type="button" aria-pressed={pane === "preview"} onClick={() => setPane("preview")} className={`inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium ${pane === "preview" ? "bg-brand-solid text-white" : "text-ink-2"}`}><Eye className="size-3.5" aria-hidden />Preview</button>
+          </div>
+        </div>
+        {row && <Badge tone={statusTone(row.status)} dot>{row.status}</Badge>}
+        <span className="num hidden text-xs text-ink-3 md:inline" role="status">{busy === "save" ? "Saving…" : row && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}</span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="hidden items-center gap-1 rounded-full border border-line bg-white/[0.02] p-0.5 sm:flex" role="group" aria-label="Device">
+            <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")} className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${device === "desktop" ? "bg-brand-solid text-white" : "text-ink-2 hover:text-ink"}`}><Monitor className="size-4" aria-hidden />Desktop</button>
+            <button type="button" aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")} className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${device === "mobile" ? "bg-brand-solid text-white" : "text-ink-2 hover:text-ink"}`}><Smartphone className="size-4" aria-hidden />Mobile</button>
+          </div>
+          <Button className="h-9 px-3 text-xs sm:px-5 sm:text-sm" onClick={() => void save()} busy={busy === "save"} disabled={!check.success || !dirty}>{row ? "Save draft" : "Create draft"}</Button>
+          <Button variant="primary" className="h-9 px-3 text-xs sm:px-5 sm:text-sm" onClick={() => setLaunching(true)} disabled={!check.success}><Rocket className="size-4" aria-hidden />{isLive ? "Update" : "Launch"}</Button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-line bg-surface/60 p-1.5 lg:w-[84px] lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-2">
+          <div className="flex flex-1 flex-row gap-1 lg:flex-none lg:flex-col" role="tablist" aria-label="Editor sections" aria-orientation="vertical">
+          {tabs.map((t) => {
+            const on = t.id === current;
+            return (
+              <button key={t.id} id={`tab-${t.id}`} role="tab" type="button" aria-selected={on} aria-controls={`panel-${t.id}`} tabIndex={on ? 0 : -1} onKeyDown={onTabKey} onClick={() => { setTab(t.id); setPane("edit"); }}
+                className={`relative flex min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium transition-colors lg:flex-none ${on ? "bg-brand-soft text-ink ring-1 ring-brand-tint" : "text-ink-2 hover:bg-white/[0.05] hover:text-ink"}`}>
+                <t.icon className={`size-5 ${on ? "text-brand" : ""}`} aria-hidden />{t.label}
+                {t.id === "audience" && cfg.targeting.conditions.length === 0 && <span aria-hidden className="absolute right-2 top-2 size-1.5 rounded-full bg-warn" />}
+              </button>
+            );
+          })}
+          </div>
+          <Link href="/app/studio" className="flex min-w-[4.25rem] flex-none flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium text-ink-2 transition-colors hover:bg-white/[0.05] hover:text-ink lg:mt-auto lg:flex-none"
+            onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave without saving?")) e.preventDefault(); }}>
+            <Sparkles className="size-5 text-brand" aria-hidden />AI Chat
+          </Link>
         </div>
 
+        <div className={`${pane === "edit" ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto border-line bg-surface lg:block lg:w-[400px] lg:flex-none lg:border-r`}>
+          <div className="sticky top-0 z-10 border-b border-line bg-surface/95 px-5 py-4 backdrop-blur">
+            <p className="font-display text-sm font-bold uppercase tracking-[0.14em]">{meta.label}</p>
+            <p className="mt-1 text-xs text-ink-3">{meta.hint}</p>
+          </div>
+
+        {panel("content", <>
         <Section title="Format and message">
           {!isToast && !isFeed && !isEmail && !isUpsell && <Field label="Format"><Select value={cfg.format} onChange={(e) => {
             const format = e.target.value as Cfg["format"];
@@ -310,7 +405,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             <div className="grid grid-cols-2 gap-3">
               <Field label="Category" hint="A short label such as Offers or News"><Input maxLength={40} value={cfg.feed.category} onChange={(e) => patch((c) => ({ ...c, feed: { ...c.feed!, category: e.target.value } }))} /></Field>
               <Field label="Order" hint="Lower comes first; ties show newest first"><Input type="number" min={0} max={1000} value={cfg.feed.order} onChange={(e) => { const n = Math.min(1000, Math.max(0, Number(e.target.value))); patch((c) => ({ ...c, feed: { ...c.feed!, order: n } })); }} /></Field>
-              <Field label="Audience"><Select value={cfg.feed.audience} onChange={(e) => patch((c) => ({ ...c, feed: { ...c.feed!, audience: e.target.value as "public" | "targeted" } }))}><option value="public">Everyone</option><option value="targeted">Targeted by the rules below</option></Select></Field>
+              <Field label="Audience"><Select value={cfg.feed.audience} onChange={(e) => patch((c) => ({ ...c, feed: { ...c.feed!, audience: e.target.value as "public" | "targeted" } }))}><option value="public">Everyone</option><option value="targeted">Targeted by the rules in Targeting</option></Select></Field>
               <Field label="Bell position" hint="Taken from the first card in the feed"><Select value={cfg.feed.position} onChange={(e) => patch((c) => ({ ...c, feed: { ...c.feed!, position: e.target.value as "bottom_right" | "bottom_left" } }))}><option value="bottom_right">Bottom right</option><option value="bottom_left">Bottom left</option></Select></Field>
             </div>
           </Section>
@@ -347,58 +442,6 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           </Section>
         )}
 
-        <Section title="Appearance">
-          <div className="grid grid-cols-2 gap-3">
-            {([["background", "Background"], ["text", "Text"], ["accent", "Button"], ["accentText", "Button text"]] as const).map(([k, label]) => (
-              <Field key={k} label={label}>
-                <div className="flex items-center gap-2"><input type="color" aria-label={label} value={cfg.style[k]} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, [k]: e.target.value.toUpperCase() } }))} className="h-9 w-12 rounded border border-line bg-surface" /><span className="num text-xs text-ink-3">{cfg.style[k]}</span></div>
-              </Field>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {!isToast && !isFeed && !isUpsell && <Field label="Placement"><Select value={cfg.style.placement} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, placement: e.target.value as Cfg["style"]["placement"] } }))}>{["center", "bottom_right", "bottom_left", "top", "bottom"].map((p) => <option key={p}>{p}</option>)}</Select></Field>}
-            <Field label="Corner radius"><Input type="number" min={0} max={24} value={cfg.style.radius} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, radius: Math.min(24, Math.max(0, Number(e.target.value))) } }))} /></Field>
-          </div>
-        </Section>
-
-        {!isFeed && !passiveUpsell && !passiveForm && <Section title="When it appears">
-          <Field label="Trigger"><Select value={cfg.trigger.type} onChange={(e) => {
-            const t = e.target.value;
-            patch((c) => ({ ...c, trigger: t === "delay" ? { type: "delay", seconds: 5 } : t === "scroll_depth" ? { type: "scroll_depth", percent: 50 } : t === "idle" ? { type: "idle", seconds: 15 } : t === "exit_intent" ? { type: "exit_intent" } : t === "add_to_cart" ? { type: "add_to_cart", delaySeconds: 0 } : t === "cart_threshold" ? { type: "cart_threshold", subtotal: 75 } : { type: "immediate" } }));
-          }}><option value="immediate">Immediately</option><option value="delay">After a delay</option><option value="scroll_depth">After scrolling</option><option value="idle">When idle</option><option value="exit_intent">Exit intent (desktop)</option><option value="add_to_cart">When something is added to the cart</option><option value="cart_threshold">When the cart reaches an amount</option></Select></Field>
-          {(cfg.trigger.type === "delay" || cfg.trigger.type === "idle") && <Field label="Seconds"><Input type="number" min={cfg.trigger.type === "idle" ? 3 : 0} max={300} value={cfg.trigger.seconds} onChange={(e) => { const s = Number(e.target.value); patch((c) => ({ ...c, trigger: { type: cfg.trigger.type as "delay" | "idle", seconds: s } })); }} /></Field>}
-          {cfg.trigger.type === "add_to_cart" && <Field label="Wait (seconds)" hint="Needs the cart reported to the SDK: Shopify is detected automatically; other stores call ConvertFlow.trackAddToCart()."><Input type="number" min={0} max={60} className="w-28" value={cfg.trigger.delaySeconds} onChange={(e) => { const n = Math.min(60, Math.max(0, Number(e.target.value))); patch((c) => ({ ...c, trigger: { type: "add_to_cart", delaySeconds: n } })); }} /></Field>}
-          {cfg.trigger.type === "cart_threshold" && <Field label={`Cart subtotal reaches (${store.currency})`}><Input type="number" min={1} className="w-28" value={cfg.trigger.subtotal} onChange={(e) => { const n = Math.max(1, Number(e.target.value)); patch((c) => ({ ...c, trigger: { type: "cart_threshold", subtotal: n } })); }} /></Field>}
-          {cfg.trigger.type === "scroll_depth" && <Field label="Scroll depth (%)"><Input type="number" min={5} max={100} value={cfg.trigger.percent} onChange={(e) => { const p = Number(e.target.value); patch((c) => ({ ...c, trigger: { type: "scroll_depth", percent: p } })); }} /></Field>}
-        </Section>}
-
-        <Section title="Who sees it">
-          <div className="flex items-center gap-2 text-sm">Show when
-            <Select aria-label="Match mode" className="w-24" value={cfg.targeting.match} onChange={(e) => patch((c) => ({ ...c, targeting: { ...c.targeting, match: e.target.value as "all" | "any" } }))}><option value="all">all</option><option value="any">any</option></Select> of these are true:
-          </div>
-          <div>
-            {cfg.targeting.conditions.map((cond, i) => (
-              <ConditionRow key={i} c={cond}
-                onChange={(n) => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.map((x, j) => (j === i ? n : x)) } }))}
-                onRemove={() => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.filter((_, j) => j !== i) } }))} />
-            ))}
-          </div>
-          <Select aria-label="Add rule" value="" onChange={(e) => { const f = RULE_FIELDS.find((x) => x.id === e.target.value); if (f) patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: [...c.targeting.conditions, f.make()] } })); }}>
-            <option value="">+ Add a rule…</option>{RULE_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-          </Select>
-          <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-sm leading-relaxed"><span className="font-medium">In plain English:</span> {summary}.</p>
-        </Section>
-
-        <Section title="Limits and goal">
-          <div className="grid grid-cols-2 gap-3">
-            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Max per session"><Input type="number" min={1} max={20} value={cfg.frequency.maxImpressionsPerSession} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, maxImpressionsPerSession: Math.max(1, Number(e.target.value)) } }))} /></Field>}
-            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Hide after dismiss (days)"><Input type="number" min={0} value={cfg.frequency.suppressAfterDismissDays} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, suppressAfterDismissDays: Math.max(0, Number(e.target.value)) } }))} /></Field>}
-            <Field label="Priority (0–100)" hint="Higher wins conflicts"><Input type="number" min={0} max={100} value={cfg.priority} onChange={(e) => patch((c) => ({ ...c, priority: Math.min(100, Math.max(0, Number(e.target.value))) }))} /></Field>
-            {!isFeed && <Field label="Goal"><Select value={cfg.goal.type} onChange={(e) => patch((c) => ({ ...c, goal: { ...c.goal, type: e.target.value as Cfg["goal"]["type"] } }))}><option value="clicks">Clicks</option><option value="add_to_cart">Add to cart</option><option value="purchase">Purchase</option><option value="subscribe">Subscribe</option></Select></Field>}
-            <Field label="Starts"><Input type="datetime-local" value={cfg.schedule.startsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { startsAt: _s, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, startsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
-            <Field label="Ends"><Input type="datetime-local" value={cfg.schedule.endsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { endsAt: _e, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, endsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
-          </div>
-        </Section>
         {cfg.format !== "announcement_bar" && cfg.format !== "restock" && !isUpsell && (!isToast || cfg.toast?.kind === "product_offer") && (
           <Section title="Featured products (optional)">
             <p className="text-xs text-ink-3">Show up to 3 products from your catalog as cards. Only the title, link and image are saved; prices and stock are never shown because they go stale.</p>
@@ -418,7 +461,68 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             )}
           </Section>
         )}
+        </>)}
 
+        {panel("design", <>
+        <Section title="Appearance">
+          <div className="grid grid-cols-2 gap-3">
+            {([["background", "Background"], ["text", "Text"], ["accent", "Button"], ["accentText", "Button text"]] as const).map(([k, label]) => (
+              <Field key={k} label={label}>
+                <div className="flex items-center gap-2"><input type="color" aria-label={label} value={cfg.style[k]} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, [k]: e.target.value.toUpperCase() } }))} className="h-9 w-12 rounded border border-line bg-surface" /><span className="num text-xs text-ink-3">{cfg.style[k]}</span></div>
+              </Field>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {!isToast && !isFeed && !isUpsell && <Field label="Placement"><Select value={cfg.style.placement} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, placement: e.target.value as Cfg["style"]["placement"] } }))}>{["center", "bottom_right", "bottom_left", "top", "bottom"].map((p) => <option key={p}>{p}</option>)}</Select></Field>}
+            <Field label="Corner radius"><Input type="number" min={0} max={24} value={cfg.style.radius} onChange={(e) => patch((c) => ({ ...c, style: { ...c.style, radius: Math.min(24, Math.max(0, Number(e.target.value))) } }))} /></Field>
+          </div>
+        </Section>
+        </>)}
+
+        {panel("audience", <>
+        <Section title="Who sees it">
+          <div className="flex items-center gap-2 text-sm">Show when
+            <Select aria-label="Match mode" className="w-24" value={cfg.targeting.match} onChange={(e) => patch((c) => ({ ...c, targeting: { ...c.targeting, match: e.target.value as "all" | "any" } }))}><option value="all">all</option><option value="any">any</option></Select> of these are true:
+          </div>
+          <div>
+            {cfg.targeting.conditions.map((cond, i) => (
+              <ConditionRow key={i} c={cond}
+                onChange={(n) => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.map((x, j) => (j === i ? n : x)) } }))}
+                onRemove={() => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.filter((_, j) => j !== i) } }))} />
+            ))}
+          </div>
+          <Select aria-label="Add rule" value="" onChange={(e) => { const f = RULE_FIELDS.find((x) => x.id === e.target.value); if (f) patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: [...c.targeting.conditions, f.make()] } })); }}>
+            <option value="">+ Add a rule…</option>{RULE_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </Select>
+          <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-sm leading-relaxed"><span className="font-medium">In plain English:</span> {summary}.</p>
+        </Section>
+        </>)}
+
+        {panel("display", <>
+        {!isFeed && !passiveUpsell && !passiveForm && <Section title="When it appears">
+          <Field label="Trigger"><Select value={cfg.trigger.type} onChange={(e) => {
+            const t = e.target.value;
+            patch((c) => ({ ...c, trigger: t === "delay" ? { type: "delay", seconds: 5 } : t === "scroll_depth" ? { type: "scroll_depth", percent: 50 } : t === "idle" ? { type: "idle", seconds: 15 } : t === "exit_intent" ? { type: "exit_intent" } : t === "add_to_cart" ? { type: "add_to_cart", delaySeconds: 0 } : t === "cart_threshold" ? { type: "cart_threshold", subtotal: 75 } : { type: "immediate" } }));
+          }}><option value="immediate">Immediately</option><option value="delay">After a delay</option><option value="scroll_depth">After scrolling</option><option value="idle">When idle</option><option value="exit_intent">Exit intent (desktop)</option><option value="add_to_cart">When something is added to the cart</option><option value="cart_threshold">When the cart reaches an amount</option></Select></Field>
+          {(cfg.trigger.type === "delay" || cfg.trigger.type === "idle") && <Field label="Seconds"><Input type="number" min={cfg.trigger.type === "idle" ? 3 : 0} max={300} value={cfg.trigger.seconds} onChange={(e) => { const s = Number(e.target.value); patch((c) => ({ ...c, trigger: { type: cfg.trigger.type as "delay" | "idle", seconds: s } })); }} /></Field>}
+          {cfg.trigger.type === "add_to_cart" && <Field label="Wait (seconds)" hint="Needs the cart reported to the SDK: Shopify is detected automatically; other stores call ConvertFlow.trackAddToCart()."><Input type="number" min={0} max={60} className="w-28" value={cfg.trigger.delaySeconds} onChange={(e) => { const n = Math.min(60, Math.max(0, Number(e.target.value))); patch((c) => ({ ...c, trigger: { type: "add_to_cart", delaySeconds: n } })); }} /></Field>}
+          {cfg.trigger.type === "cart_threshold" && <Field label={`Cart subtotal reaches (${store.currency})`}><Input type="number" min={1} className="w-28" value={cfg.trigger.subtotal} onChange={(e) => { const n = Math.max(1, Number(e.target.value)); patch((c) => ({ ...c, trigger: { type: "cart_threshold", subtotal: n } })); }} /></Field>}
+          {cfg.trigger.type === "scroll_depth" && <Field label="Scroll depth (%)"><Input type="number" min={5} max={100} value={cfg.trigger.percent} onChange={(e) => { const p = Number(e.target.value); patch((c) => ({ ...c, trigger: { type: "scroll_depth", percent: p } })); }} /></Field>}
+        </Section>}
+
+        <Section title="Limits and goal">
+          <div className="grid grid-cols-2 gap-3">
+            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Max per session"><Input type="number" min={1} max={20} value={cfg.frequency.maxImpressionsPerSession} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, maxImpressionsPerSession: Math.max(1, Number(e.target.value)) } }))} /></Field>}
+            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Hide after dismiss (days)"><Input type="number" min={0} value={cfg.frequency.suppressAfterDismissDays} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, suppressAfterDismissDays: Math.max(0, Number(e.target.value)) } }))} /></Field>}
+            <Field label="Priority (0–100)" hint="Higher wins conflicts"><Input type="number" min={0} max={100} value={cfg.priority} onChange={(e) => patch((c) => ({ ...c, priority: Math.min(100, Math.max(0, Number(e.target.value))) }))} /></Field>
+            {!isFeed && <Field label="Goal"><Select value={cfg.goal.type} onChange={(e) => patch((c) => ({ ...c, goal: { ...c.goal, type: e.target.value as Cfg["goal"]["type"] } }))}><option value="clicks">Clicks</option><option value="add_to_cart">Add to cart</option><option value="purchase">Purchase</option><option value="subscribe">Subscribe</option></Select></Field>}
+            <Field label="Starts"><Input type="datetime-local" value={cfg.schedule.startsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { startsAt: _s, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, startsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
+            <Field label="Ends"><Input type="datetime-local" value={cfg.schedule.endsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { endsAt: _e, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, endsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
+          </div>
+        </Section>
+        </>)}
+
+        {panel("offer", <>
         {!isUpsell && <Section title={isEmail ? "Sign-up incentive (optional)" : "Discount code (optional)"}>
           {guard.data && guard.data.maxDiscountPercent === null && !cfg.promotion && <p className="text-xs text-ink-3">Promotions are off for this store. Set a maximum discount under Settings, Promotions guardrail, to enable them.</p>}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!cfg.promotion} onChange={(e) => patch((c) => { const { promotion: _x, ...rest } = c; return e.target.checked ? { ...rest, promotion: { code: "SAVE10", percentOff: 10 } } : rest; })} />{isEmail ? "Give subscribers a discount code once they confirm" : "Show a discount code in this campaign"}</label>
@@ -431,7 +535,9 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             <Field label="Label (optional)"><Input maxLength={60} value={cfg.promotion.label ?? ""} onChange={(e) => patch((c) => { const { label: _l, ...p } = c.promotion!; return { ...c, promotion: e.target.value ? { ...p, label: e.target.value } : p }; })} /></Field>
           </>)}
         </Section>}
+        </>)}
 
+        {panel("test", <>
         <Section title="Measure real impact (optional)">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!cfg.experiment} onChange={(e) => patch((c) => { const { experiment: _x, ...rest } = c; return e.target.checked ? { ...rest, experiment: { holdoutPercent: 10 } } : rest; })} />Hold some visitors out as a control group (Growth)</label>
           {cfg.experiment && (<>
@@ -439,36 +545,47 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             <p className="text-xs text-ink-3">Visitors who have not consented always see the campaign and are not counted.</p>
           </>)}
         </Section>
+        </>)}
+
+        {row && panel("history", <div className="px-5 py-5"><VersionHistory store={store} campaignId={row.id} bare empty={<p className="text-sm text-ink-3">Nothing has been published yet. Each publish creates a version you can roll back to.</p>} /></div>)}
+        </div>
+
+        <main className={`${pane === "preview" ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col bg-[#0b0d14] lg:flex`} style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
+          <div className="flex items-center justify-between px-5 pt-4">
+            <h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">Live preview</h2>
+            <span className="text-xs text-ink-3">{device === "mobile" ? "Mobile, 390 px" : "Desktop"}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <CampaignPreview config={cfg} device={device} domain={store.domain} currency={store.currency} fill />
+          </div>
+          <div className="max-h-28 space-y-3 lg:max-h-[38%] overflow-y-auto border-t border-line bg-surface/80 px-5 py-4 empty:hidden">
+            {!launching && <ErrorNote error={error} />}
+            {issues.length > 0 && <ul className="list-disc pl-5 text-sm text-danger">{issues.map((i) => <li key={i}>{i}</li>)}</ul>}
+            {!check.success && <ul className="list-disc pl-5 text-sm text-danger">{check.error.issues.slice(0, 4).map((i) => <li key={i.path.join(".") + i.message}>{i.path.join(".")}: {i.message}</li>)}</ul>}
+            {warnings.map((w) => <p key={w} className="rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-relaxed">{w}</p>)}
+          </div>
+        </main>
       </div>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">Live preview</h2>
-          <div className="flex gap-1" role="group" aria-label="Device">
-            <Button variant={device === "desktop" ? "secondary" : "ghost"} aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")}><Monitor className="size-4" />Desktop</Button>
-            <Button variant={device === "mobile" ? "secondary" : "ghost"} aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")}><Smartphone className="size-4" />Mobile</Button>
-          </div>
+      <LaunchDrawer open={launching} onClose={() => setLaunching(false)}>
+        <div className="card-flat rounded-2xl border border-line bg-canvas/50 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4 text-brand" aria-hidden />{cfg.name}</div>
+          <p className="mt-2 text-sm leading-relaxed text-ink-2"><span className="font-medium text-ink">Who sees it:</span> {summary}.</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-2"><span className="font-medium text-ink">Where:</span> <span className="num">{store.domain}</span></p>
         </div>
-        <CampaignPreview config={cfg} device={device} domain={store.domain} currency={store.currency} />
-
-        <div className="mt-6 space-y-3">
-          <ErrorNote error={error} />
-          {issues.length > 0 && <ul className="list-disc pl-5 text-sm text-danger">{issues.map((i) => <li key={i}>{i}</li>)}</ul>}
-          {!check.success && <ul className="list-disc pl-5 text-sm text-danger">{check.error.issues.slice(0, 4).map((i) => <li key={i.path.join(".") + i.message}>{i.path.join(".")}: {i.message}</li>)}</ul>}
-          {warnings.map((w) => <p key={w} className="rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-relaxed">{w}</p>)}
-
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-0.5" checked={approved} disabled={!check.success} onChange={(e) => setApproved(e.target.checked)} />
-            <span>I&apos;ve reviewed this campaign and approve it to go live on <span className="num">{store.domain}</span>.</span>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void save()} busy={busy === "save"} disabled={!check.success || !dirty}>{row ? "Save draft" : "Create draft"}</Button>
-            <Button variant="primary" onClick={() => void publish()} busy={busy === "publish"} disabled={!check.success || !approved}>{isLive ? "Publish changes" : "Publish"}</Button>
-            {row && !dirty && <span className="self-center text-xs text-ink-3">Saved</span>}
-          </div>
-          <p className="text-xs text-ink-3"><Plus className="mr-1 inline size-3" />Each publish creates a new immutable version you can roll back to.</p>
+        {issueCount > 0 && <p className="text-sm text-danger">Fix the {issueCount} {issueCount === 1 ? "issue" : "issues"} shown under the preview before launching.</p>}
+        {warnings.length > 0 && <p className="text-sm text-ink-2">{warnings.length} {warnings.length === 1 ? "warning" : "warnings"} shown under the preview. Warnings do not block launching.</p>}
+        <ErrorNote error={error} />
+        <label className="flex items-start gap-2.5 rounded-2xl border border-line bg-white/[0.02] p-4 text-sm leading-relaxed">
+          <input type="checkbox" className="mt-0.5 size-4 accent-[#2350ff]" checked={approved} disabled={!check.success} onChange={(e) => setApproved(e.target.checked)} />
+          <span>I&apos;ve reviewed this campaign and approve it to go live on <span className="num">{store.domain}</span>.</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" onClick={() => void publish()} busy={busy === "publish"} disabled={!check.success || !approved}>{isLive ? "Publish changes" : "Publish"}</Button>
+          <Button onClick={() => setLaunching(false)}>Keep editing</Button>
         </div>
-      </div>
-    </div>
+        <p className="text-xs text-ink-3">Each publish creates a new immutable version you can roll back to. Nothing goes live until you publish.</p>
+      </LaunchDrawer>
+    </div></BuilderHost>
   );
 }

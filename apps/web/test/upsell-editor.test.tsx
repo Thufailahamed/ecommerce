@@ -137,6 +137,7 @@ describe("upsell editor", () => {
     expect(screen.getByText(/only show on a product your catalog says is out of stock/i)).toBeTruthy();
     // the placement change kept a page-type rule, so the cart warning does not fire here
     expect(screen.queryByText(/cart block should target/i)).toBeNull();
+    await u.click(screen.getByRole("tab", { name: "Targeting" }));
     await u.click(screen.getAllByRole("button", { name: "Remove rule" })[0]!);
     expect(screen.getByText(/cart block should target the cart page/i)).toBeTruthy();
   });

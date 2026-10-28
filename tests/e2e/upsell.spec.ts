@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { API, STORE } from "./playwright.config";
-import { alertOf, apiPost, newMerchant, shopper, type Merchant } from "./support";
+import { alertOf, apiPost, launch, newMerchant, shopper, type Merchant } from "./support";
 
 let m: Merchant;
 
@@ -28,10 +28,8 @@ const importProducts = (products: P[]) => apiPost(m.page, `/api/v1/stores/${m.st
 
 /** Approves and publishes whatever is in the editor now, and waits until the server has accepted it. */
 async function approveAndPublish(page: Page, button: "Publish" | "Publish changes" = "Publish") {
-  const approve = page.getByRole("checkbox", { name: /approve it to go live/ });
-  await approve.check();
-  await page.getByRole("button", { name: button, exact: true }).click();
-  await expect(approve).not.toBeChecked({ timeout: 20_000 }); // cleared only once the publish succeeded
+  await launch(page, button);
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 }); // the review drawer closes only once the publish succeeded
   await expect(page.locator("span", { hasText: /^active$/ }).first()).toBeVisible({ timeout: 20_000 });
   await expect(alertOf(page)).toHaveCount(0);
 }
@@ -272,10 +270,10 @@ test.describe.serial("upsell tool, end to end", () => {
   test("pausing the campaigns removes the blocks for new visitors", async ({ browser }) => {
     await m.page.goto("/app/campaigns");
     await expect(m.page.getByRole("row", { name: /E2E recommendations/ })).toBeVisible();
-    await expect(m.page.getByRole("button", { name: "Pause" })).toHaveCount(2);
+    await expect(m.page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(2);
     for (let left = 2; left > 0; left--) {
-      await m.page.getByRole("button", { name: "Pause" }).first().click();
-      await expect(m.page.getByRole("button", { name: "Pause" })).toHaveCount(left - 1);
+      await m.page.getByRole("button", { name: "Pause", exact: true }).first().click();
+      await expect(m.page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(left - 1);
     }
     const a = await productPage(browser, { adder: "ok" });
     await a.page.waitForTimeout(3000);

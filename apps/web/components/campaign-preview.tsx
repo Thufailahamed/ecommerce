@@ -6,7 +6,7 @@ import { renderCampaign, type RecProduct } from "@convertflow/storefront-sdk";
 export type Device = "desktop" | "mobile";
 
 /** Clearly labelled stand-ins: the preview has no catalog and no shopper. They never reach the storefront. */
-const SAMPLE_PRODUCTS: RecProduct[] = [
+export const SAMPLE_PRODUCTS: RecProduct[] = [
   { id: "sample-1", title: "Sample product one", url: "/", price: 24, addable: true, variantId: "1" },
   { id: "sample-2", title: "Sample product two", url: "/", price: 36.5, addable: true, variantId: "2" },
   { id: "sample-3", title: "Sample product three", url: "/", price: 18, addable: true, variantId: "3" },
@@ -20,7 +20,8 @@ const SAMPLE_PRODUCTS: RecProduct[] = [
  * which makes it the containing block for the SDK's position:fixed elements, so the campaign
  * stays inside the frame instead of covering the editor.
  */
-export function CampaignPreview({ config, device, domain, currency }: { config: unknown; device: Device; domain: string; currency?: string }) {
+/** `fill` stretches the frame to its container (the builder canvas) instead of using the fixed heights of the compact preview. */
+export function CampaignPreview({ config, device, domain, currency, fill = false }: { config: unknown; device: Device; domain: string; currency?: string; fill?: boolean }) {
   const frame = useRef<HTMLDivElement>(null);
   const parsed = CampaignConfig.safeParse(config);
 
@@ -44,14 +45,14 @@ export function CampaignPreview({ config, device, domain, currency }: { config: 
   }, [parsed.success, parsed.success ? JSON.stringify(parsed.data) : null, device, sampleCart, currency]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex justify-center">
-      <div className={device === "mobile" ? "w-[390px] max-w-full" : "w-full"}>
+    <div className={`flex justify-center ${fill ? "h-full" : ""}`}>
+      <div className={`${device === "mobile" ? "w-[390px] max-w-full" : "w-full"} ${fill ? "flex h-full flex-col" : ""}`}>
         <div className="flex items-center gap-1.5 rounded-t-lg border border-b-0 border-line bg-surface px-3 py-2">
           <span className="size-2 rounded-full bg-line" /><span className="size-2 rounded-full bg-line" /><span className="size-2 rounded-full bg-line" />
           <span className="num ml-2 truncate text-xs text-ink-3">{domain}</span>
         </div>
-        <div ref={frame} style={{ transform: "translateZ(0)", height: device === "mobile" ? 560 : 420 }}
-          className={`relative rounded-b-lg border border-line bg-surface ${isRec || isInline ? "overflow-auto" : "overflow-hidden"}`} aria-label="Campaign preview">
+        <div ref={frame} style={{ transform: "translateZ(0)", ...(fill ? {} : { height: device === "mobile" ? 560 : 420 }) }}
+          className={`relative ${fill ? "min-h-[420px] flex-1" : ""} rounded-b-lg border border-line bg-surface ${isRec || isInline ? "overflow-auto" : "overflow-hidden"}`} aria-label="Campaign preview">
           <div className="space-y-3 p-6 opacity-60" aria-hidden>
             <div className="h-5 w-1/3 rounded bg-line" />
             <div className="h-3 w-full rounded bg-line/70" /><div className="h-3 w-5/6 rounded bg-line/70" />

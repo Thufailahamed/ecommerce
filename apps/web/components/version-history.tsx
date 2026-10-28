@@ -1,17 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, ApiError, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge, Button, ErrorNote } from "./ui";
 
 interface Version { id: string; version: number; source: string; createdAt: string }
 
-export function VersionHistory({ store, campaignId }: { store: Store; campaignId: string }) {
+/** `bare` drops the card and heading for use inside an editor panel; `empty` is shown there while nothing is published. */
+export function VersionHistory({ store, campaignId, bare = false, empty = null }: { store: Store; campaignId: string; bare?: boolean; empty?: ReactNode }) {
   const path = `/api/v1/stores/${store.id}/campaigns/${campaignId}/versions`;
   const { data, reload } = useApi<Version[]>(path);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  if (!data || data.length === 0) return null;
+  if (!data || data.length === 0) return bare ? <>{empty}</> : null;
 
   async function rollback(versionId: string) {
     if (!window.confirm("Roll back to this version? It will be published immediately as a new version.")) return;
@@ -24,8 +25,8 @@ export function VersionHistory({ store, campaignId }: { store: Store; campaignId
   }
 
   return (
-    <section className="card mt-10 p-5 md:p-6">
-      <h2 className="mb-4 font-display text-xs font-bold uppercase tracking-[0.14em]">Version history</h2>
+    <section className={bare ? "" : "card mt-10 p-5 md:p-6"} aria-label="Version history">
+      {!bare && <h2 className="mb-4 font-display text-xs font-bold uppercase tracking-[0.14em]">Version history</h2>}
       <ErrorNote error={error} />
       <ul className="divide-y divide-line text-sm">
         {data.map((v, i) => (
