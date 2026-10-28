@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button, ErrorNote, Field, Input } from "./ui";
 import { AuthShell } from "./auth-shell";
+import { PasswordStrength } from "./password-strength";
 
 const TURNSTILE_KEY = process.env["NEXT_PUBLIC_TURNSTILE_SITE_KEY"];
 
@@ -51,13 +52,14 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   return (
     <AuthShell>
       <form onSubmit={submit} className="space-y-5">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight">{signup ? "Create your workspace" : needCode ? "Two-step verification" : "Welcome back"}</h1>
+        <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight">{signup ? "Create your workspace" : needCode ? "Two-step verification" : "Welcome back"}</h1>
         <p className="-mt-2 text-sm text-ink-2">{signup ? "Free plan, no card required to start." : needCode ? "Enter the code from your authenticator app, or a recovery code." : "Sign in to manage your campaigns."}</p>
         <ErrorNote error={error} />
         <Field label="Email"><Input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={needCode} /></Field>
         <Field label="Password" hint={signup ? "At least 10 characters." : undefined}>
           <Input type="password" required minLength={signup ? 10 : 1} autoComplete={signup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} disabled={needCode} />
         </Field>
+        {signup && <PasswordStrength value={password} />}
         {needCode && (
           <Field label="Authentication code" hint="6 digits, or a recovery code like ABCDE-12345.">
             <Input autoFocus required inputMode="text" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />

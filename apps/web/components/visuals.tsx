@@ -85,6 +85,26 @@ export function Funnel({ steps }: { steps: { label: string; value: number }[] })
   );
 }
 
+/** Circular progress with the count in the middle. The arc draws in on first paint. */
+export function ProgressRing({ value, max, size = 76 }: { value: number; max: number; size?: number }) {
+  const r = (size - 10) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = max > 0 ? value / max : 0;
+  return (
+    <div className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }} role="img" aria-label={`${value} of ${max} setup steps complete`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
+        <defs>
+          <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8fb0ff" /><stop offset="1" stopColor="#2350ff" /></linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="6" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="url(#ring-grad)" strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct)} style={{ transition: "stroke-dashoffset 1s var(--ease-out)", filter: "drop-shadow(0 0 6px rgba(35,80,255,0.8))" }} />
+      </svg>
+      <span className="num absolute text-sm font-semibold">{value}<span className="text-ink-3">/{max}</span></span>
+    </div>
+  );
+}
+
 const HUES = ["#2350ff", "#5b3bff", "#19b6ff", "#d63384", "#10b981", "#f59e0b"];
 
 /** Deterministic colored initials for a person, so the same address always gets the same avatar. */

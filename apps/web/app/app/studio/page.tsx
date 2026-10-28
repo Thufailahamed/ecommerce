@@ -6,7 +6,8 @@ import { buildGenerateBody, emptyStudioForm, fieldsFor, studioToolOptions, type 
 import { NeedStore } from "@/components/need-store";
 import { StudioReview, type StudioResult } from "@/components/studio-review";
 import { ToolVisual } from "@/components/visuals";
-import { Button, Empty, ErrorNote, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { Button, Empty, ErrorNote, Field, Input, PageHeader, Select, Skeleton, Textarea } from "@/components/ui";
+import { Mascot, Scene } from "@/components/illustrations";
 
 function Studio({ store }: { store: Store }) {
   const [form, setForm] = useState<StudioForm>(emptyStudioForm);
@@ -76,7 +77,16 @@ function Studio({ store }: { store: Store }) {
         </form>
 
         <div aria-live="polite" className="min-w-0">
-          {!result && <Empty icon={Sparkles} title="Your draft will appear here" body="You will see a live preview, the audience, and what to check before you approve anything." />}
+          {!result && (busy ? (
+            <div role="status" className="card flex flex-col items-center gap-6 p-10 text-center">
+              <Mascot mood="thinking" size={120} />
+              <div>
+                <p className="font-display text-sm font-bold uppercase tracking-[0.14em]">Drafting from your catalog</p>
+                <p className="mt-2 text-sm text-ink-2">This takes a few seconds. Nothing is published.</p>
+              </div>
+              <div className="w-full max-w-xs space-y-2.5"><Skeleton className="h-3" /><Skeleton className="h-3 w-4/5" /><Skeleton className="h-3 w-3/5" /></div>
+            </div>
+          ) : <Empty icon={Sparkles} visual={<Scene kind="mail" className="mx-auto w-44" />} title="Your draft will appear here" body="You will see a live preview, the audience, and what to check before you approve anything." />)}
           {result && (
             <div className="card space-y-6 p-6 md:p-7">
               <StudioReview result={result} domain={store.domain} currency={store.currency} />

@@ -30,6 +30,19 @@ function List({ store }: { store: Store }) {
       <PageHeader eyebrow="Campaigns" title="Campaigns" sub="Create, schedule and manage on-site campaigns."
         actions={<><Link href="/app/studio"><Button><Sparkles className="size-4" />Generate with AI</Button></Link><Link href="/app/campaigns/new"><Button variant="primary"><Plus className="size-4" />New campaign</Button></Link></>} />
 
+      <div role="group" aria-label="Quick status filter" className="mb-4 flex flex-wrap gap-2">
+        {["all", "draft", "scheduled", "active", "paused", "archived"].map((s) => {
+          const on = status === s;
+          const n = s === "all" ? (data?.length ?? 0) : (data ?? []).filter((c) => c.status === s).length;
+          return (
+            <button key={s} type="button" aria-pressed={on} onClick={() => setStatus(s)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 transition-all duration-200 active:scale-95 ${on ? "bg-brand-solid text-white shadow-[0_8px_20px_-10px_rgba(35,80,255,1)] ring-brand-tint" : "bg-white/[0.03] text-ink-2 ring-line hover:text-ink hover:ring-line-strong"}`}>
+              {s === "all" ? "All" : s[0]!.toUpperCase() + s.slice(1)}<span className={`num ml-1.5 ${on ? "opacity-80" : "text-ink-3"}`}>{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="card-flat mb-5 flex flex-wrap items-center gap-2 p-2">
         <div className="relative min-w-0 flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />

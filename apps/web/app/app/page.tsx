@@ -6,7 +6,7 @@ import type { CampaignRow, Store } from "@/lib/api";
 import { int, pct, useApi } from "@/lib/use-api";
 import { NeedStore } from "@/components/need-store";
 import { Badge, Button, ErrorNote, Metric, SectionTitle, Skeleton } from "@/components/ui";
-import { ToolVisual } from "@/components/visuals";
+import { ProgressRing, ToolVisual } from "@/components/visuals";
 import { TOOLS, TOOL_ORDER } from "@/lib/tools";
 import { useRange, type Analytics } from "@/lib/analytics";
 
@@ -53,13 +53,11 @@ function Checklist({ steps }: { steps: Step[] }) {
         <div>
           <SectionTitle id="checklist-h" sub="Finish these to start showing campaigns to shoppers.">Setup checklist</SectionTitle>
         </div>
-        <div className="w-full max-w-xs">
-          <div className="mb-2 flex items-center justify-between text-xs text-ink-2">
-            <span>{doneCount} of {steps.length} complete</span>
-            <span className="num font-medium text-ink">{pctDone}%</span>
-          </div>
-          <div role="progressbar" aria-label="Setup progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount} className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
-            <div className="progress-fill h-full rounded-full" style={{ width: `${pctDone}%` }} />
+        <div className="flex items-center gap-4">
+          <ProgressRing value={doneCount} max={steps.length} />
+          <div>
+            <div className="font-display text-sm font-bold uppercase tracking-[0.12em]">{pctDone}% ready</div>
+            <div className="mt-1 text-xs text-ink-2">{doneCount} of {steps.length} steps complete</div>
           </div>
         </div>
       </div>

@@ -8,7 +8,8 @@ import { FormResults } from "@/components/form-results";
 import { NeedStore } from "@/components/need-store";
 import { ToolAnalyticsView, ViewTabs, type View as AnalyticsView } from "@/components/tool-analytics";
 import { Badge, Empty, ErrorNote, Metric, Notice, PageHeader, Select, SectionTitle, Skeleton, tableClass } from "@/components/ui";
-import { Funnel, ToolGallery } from "@/components/visuals";
+import { Funnel } from "@/components/visuals";
+import { Mascot } from "@/components/illustrations";
 
 function View({ store }: { store: Store }) {
   const [view, setView] = useState<AnalyticsView>("overview");
@@ -29,7 +30,7 @@ function View({ store }: { store: Store }) {
       <ErrorNote error={error} />
       {loading && <Skeleton className="h-40" />}
       {data && data.totals.impressions === 0 && data.totals.observedOrders === 0 && data.experiments.length === 0 && !data.forms?.length && (
-        <Empty icon={BarChart3} visual={<ToolGallery tools={["toast", "feed", "upsell", "email"]} />} title="No activity in this period" body="Once a published campaign is shown to visitors who have consented to analytics, impressions and clicks appear here. Check Settings to confirm the snippet is installed." />
+        <Empty icon={BarChart3} visual={<Mascot mood="sleepy" size={104} />} title="No activity in this period" body="Once a published campaign is shown to visitors who have consented to analytics, impressions and clicks appear here. Check Settings to confirm the snippet is installed." />
       )}
       {data && (data.totals.impressions > 0 || data.totals.observedOrders > 0 || data.experiments.length > 0 || (data.forms?.length ?? 0) > 0) && (
         <>

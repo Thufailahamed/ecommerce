@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { Search } from "lucide-react";
+import { CommandPalette, useCommandShortcut } from "@/components/command-palette";
 import clsx from "clsx";
 import { BarChart3, Bell, ChevronDown, LayoutDashboard, LogOut, Mail, Megaphone, Menu, MessageSquare, Settings, ShoppingBag, Smartphone, Sparkles, Users, X, type LucideIcon } from "lucide-react";
 import { SessionProvider, useSession } from "@/lib/session";
@@ -27,6 +29,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { me, stores, store, selectStore } = useSession();
   const [open, setOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  useCommandShortcut(openPalette);
 
   const link = (active: boolean) =>
     clsx(
@@ -73,6 +78,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-dvh bg-canvas md:grid md:grid-cols-[256px_1fr]">
       <Spotlight />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <aside className={clsx(
         "fixed inset-y-0 left-0 z-30 flex w-[256px] flex-col border-r border-line bg-[#080a10]/95 p-4 backdrop-blur-xl transition-transform duration-300 md:static md:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full",
@@ -95,6 +101,11 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
+        <button onClick={openPalette} className="group mb-5 flex h-10 w-full items-center gap-2.5 rounded-xl border border-line bg-white/[0.02] px-3 text-sm text-ink-3 transition-colors hover:border-line-strong hover:text-ink-2">
+          <Search className="size-4" aria-hidden />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-ink-3 group-hover:text-ink-2">⌘K</kbd>
+        </button>
         {nav}
 
         <div className="mt-auto pt-6">
@@ -120,6 +131,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="relative flex h-14 items-center border-b border-line bg-canvas/80 px-4 backdrop-blur md:hidden">
           <button aria-label="Open menu" onClick={() => setOpen(true)} className="rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink"><Menu className="size-5" /></button>
           <div className="ml-3"><Logo /></div>
+          <button aria-label="Search" onClick={openPalette} className="ml-auto rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink"><Search className="size-5" /></button>
         </div>
         <VerifyBanner />
         <main className="relative mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-10">
