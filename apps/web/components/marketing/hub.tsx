@@ -2,24 +2,26 @@ import type { CSSProperties } from "react";
 import { Code2, FileSpreadsheet, Inbox, Mail, RefreshCw, ShieldCheck, ShoppingBag, ShoppingCart, Store, Boxes, type LucideIcon } from "lucide-react";
 import { LogoMark } from "../logo";
 import { Reveal } from "./fx";
+import { BRAND_LOGOS, type BrandLogo } from "./brand-logos";
 
 /**
- * Integrations hub. Only integrations the product actually has are shown, by name with our own icons
- * (no third-party logos). Left: where catalog and context come from. Right: where subscribers and events go.
+ * Integrations hub. Only integrations the product actually has are shown. Where a platform has an official
+ * monochrome mark (Simple Icons, CC0) that mark is used; the rest use our own icons. Left: where catalog and
+ * context come from. Right: where subscribers and events go.
  */
-type Node = { name: string; note: string; icon: LucideIcon; x: number; y: number; tint: string };
+type Node = { name: string; note: string; icon: LucideIcon; brand?: keyof typeof BRAND_LOGOS; x: number; y: number; tint: string };
 const W = 1000, H = 620, C = { x: 500, y: 330 }, T = 116;
 
 const IN: Node[] = [
-  { name: "Shopify", note: "Products, orders, privacy webhooks", icon: ShoppingBag, x: 110, y: 130, tint: "#5fd99a" },
-  { name: "WooCommerce", note: "Live catalog sync", icon: Store, x: 290, y: 90, tint: "#a78bfa" },
-  { name: "BigCommerce", note: "Live catalog sync", icon: Boxes, x: 110, y: 330, tint: "#8fb0ff" },
+  { name: "Shopify", note: "Products, orders, privacy webhooks", icon: ShoppingBag, brand: "shopify", x: 110, y: 130, tint: "#5fd99a" },
+  { name: "WooCommerce", note: "Live catalog sync", icon: Store, brand: "woocommerce", x: 290, y: 90, tint: "#a78bfa" },
+  { name: "BigCommerce", note: "Live catalog sync", icon: Boxes, brand: "bigcommerce", x: 110, y: 330, tint: "#8fb0ff" },
   { name: "Magento", note: "Product import", icon: Store, x: 290, y: 520, tint: "#fb923c" },
   { name: "Any website", note: "JavaScript API", icon: Code2, x: 110, y: 530, tint: "#22d3ee" },
 ];
 const OUT: Node[] = [
   { name: "Klaviyo", note: "Confirmed subscribers", icon: Inbox, x: 710, y: 90, tint: "#f472b6" },
-  { name: "Mailchimp", note: "Confirmed subscribers", icon: Mail, x: 890, y: 130, tint: "#facc15" },
+  { name: "Mailchimp", note: "Confirmed subscribers", icon: Mail, brand: "mailchimp", x: 890, y: 130, tint: "#facc15" },
   { name: "CSV & JSON", note: "Import and export", icon: FileSpreadsheet, x: 890, y: 330, tint: "#5fd99a" },
   { name: "Consent signal", note: "Nothing recorded without it", icon: ShieldCheck, x: 710, y: 520, tint: "#8fb0ff" },
   { name: "Purchases", note: "7-day click attribution", icon: ShoppingCart, x: 890, y: 530, tint: "#fb923c" },
@@ -31,13 +33,22 @@ const path = (n: Node) => {
 };
 const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
-function Tile({ n, i }: { n: Node; i: number }) {
+/** Brand mark when we have one, otherwise our own icon. */
+function Mark({ n, className }: { n: Node; className: string }) {
+  if (n.brand) {
+    const b: BrandLogo = BRAND_LOGOS[n.brand];
+    return <svg viewBox="0 0 24 24" className={className} style={{ color: b.fill }} role="img" aria-label={b.title}><path d={b.path} fill="currentColor" /></svg>;
+  }
   const Icon = n.icon;
+  return <Icon className={className} style={{ color: n.tint }} aria-hidden />;
+}
+
+function Tile({ n, i }: { n: Node; i: number }) {
   return (
     <div className="hub-tile group absolute -translate-x-1/2 -translate-y-1/2" style={{ left: pct(n.x, W), top: pct(n.y, H), width: pct(T, W), "--d": `${i * 70}ms` } as CSSProperties}>
       <div className="aspect-square rounded-[22%] bg-white/[0.03] p-[7%] ring-1 ring-white/10 backdrop-blur transition-transform duration-500 [transition-timing-function:var(--ease-out)] group-hover:-translate-y-1.5 group-hover:scale-105">
         <div className="relative grid size-full place-items-center overflow-hidden rounded-[18%] bg-[#12141c] ring-1 ring-white/10" style={{ boxShadow: `inset 0 0 40px -10px ${n.tint}55, 0 20px 40px -20px ${n.tint}80` }}>
-          <Icon className="size-[38%]" style={{ color: n.tint }} aria-hidden />
+          <Mark n={n} className="size-[38%]" />
         </div>
       </div>
       <p className="mt-2 whitespace-nowrap text-center text-[clamp(10px,1.1vw,13px)] font-semibold text-white">{n.name}</p>
@@ -104,12 +115,12 @@ export function IntegrationsHub() {
 
         {/* Phones: a plain list */}
         <ul className="mt-10 grid grid-cols-2 gap-3 md:hidden">
-          {all.map((n) => { const Icon = n.icon; return (
+          {all.map((n) => (
             <li key={n.name} className="flex items-center gap-3 rounded-2xl bg-surface p-3 ring-1 ring-white/10">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#12141c] ring-1 ring-white/10"><Icon className="size-5" style={{ color: n.tint }} aria-hidden /></span>
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#12141c] ring-1 ring-white/10"><Mark n={n} className="size-5" /></span>
               <span className="min-w-0"><span className="block truncate text-[14px] font-semibold">{n.name}</span><span className="block truncate text-[11.5px] text-ink-3">{n.note}</span></span>
             </li>
-          ); })}
+          ))}
         </ul>
         <p className="mx-auto mt-10 max-w-2xl text-center text-[12px] text-ink-3">Platform and tool names are trademarks of their owners and are shown only to describe compatibility. No affiliation or endorsement is implied. Shopify&apos;s native install flow is in development; today it connects with a script tag or theme app embed.</p>
       </div>

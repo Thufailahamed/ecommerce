@@ -1,16 +1,26 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowRight, Check, Mail, ShieldCheck, Sparkles, Truck } from "lucide-react";
-import { Photo, type PhotoKey } from "./art";
+import { ArrowRight, Check, Lock, Sparkles } from "lucide-react";
+import { LogoMark } from "../logo";
+import { BarMock, Photo, PopupMock, SlideInMock, STORES, StoreMock, ToastMock, UpsellMock, type PhotoKey, type StoreName } from "./art";
+import { BlockScene } from "./blocks";
+import { Scaled } from "./fx";
 
-const WORDS = ["popup", "upsell", "email signup", "slide-in", "restock alert", "toast"];
-const GOALS = [
-  "Grow my email list without discounting",
-  "Sell more trail shoes to new visitors",
-  "Nudge carts over $75 to free shipping",
-  "Tell regulars about the spring launch",
+/**
+ * Each headline word has a matching storefront scene in the stage below: the rotating word and the live preview
+ * always show the same campaign, with the goal that produced it in the studio card.
+ */
+const SCENES: { word: string; goal: string; store: StoreName; overlay: ReactNode }[] = [
+  { word: "popup", goal: "Introduce the new cream to first-time visitors", store: "Lumen Skin", overlay: <PopupMock title="Meet the night cream" body="Gentle, fragrance-free, back in stock." cta="Shop the cream" product="p-cream" /> },
+  { word: "slide-in", goal: "Help undecided shoppers compare trail shoes", store: "Northpeak", overlay: <SlideInMock title="Compare our top 3" cta="Compare" product="p-sneaker-white" /> },
+  { word: "email signup", goal: "Grow my email list without discounting", store: "Lumen Skin", overlay: <PopupMock title="First access to new shades" body="Join for launches and restocks." cta="Sign me up" product="p-serum" email /> },
+  { word: "free-ship bar", goal: "Nudge carts over $75 to free shipping", store: "Field & Thread", overlay: <BarMock text="You are $12 from free shipping" cta="Keep shopping" /> },
+  { word: "upsell", goal: "Suggest a watch with every jacket", store: "Field & Thread", overlay: <UpsellMock items={["p-watch", "p-watch-brown"]} /> },
+  { word: "toast", goal: "Tell regulars about the spring launch", store: "Northpeak", overlay: <ToastMock text="New: spring trail range" sub="Out now, in every size" /> },
 ];
+const GOALS = SCENES.map((x) => x.goal);
+const CHECKS = ["Matches the campaign schema", "Links stay on your site", "No promotion you did not authorise", "No stock claim we cannot verify"];
 const INDUSTRIES: [string, PhotoKey][] = [["Beauty", "p-serum-apply"], ["Fashion", "p-fashion"], ["Home", "p-chair-blue"], ["Health", "p-capsules"], ["Pets", "p-dog"], ["Tech", "p-headphones"], ["Outdoor", "p-hikers"], ["Accessories", "p-watch"]];
 
 /** Cycles through `items` with a typewriter effect: types, holds, deletes, moves on. Stops once `paused`. */
@@ -34,30 +44,29 @@ function useTypewriter(items: string[], paused: boolean) {
 }
 
 export function Hero() {
-  const [word, setWord] = useState(0);
+  const [scene, setScene] = useState(0);
   const [typed, setTyped] = useState<string | null>(null);
   const auto = useTypewriter(GOALS, typed !== null);
   const stage = useRef<HTMLDivElement>(null);
+  const now = SCENES[scene]!;
 
   useEffect(() => {
-    const t = setInterval(() => setWord((w) => (w + 1) % WORDS.length), 2200);
+    const t = setInterval(() => setScene((w) => (w + 1) % SCENES.length), 3600);
     return () => clearInterval(t);
   }, []);
 
-  // Pointer parallax: each layer moves by its own depth, the whole collage tilts a little.
+  // The stage starts tilted back and lies flat as you scroll into it; the pointer adds a little parallax on top.
   useEffect(() => {
     const el = stage.current;
     if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
-    const onMove = (e: PointerEvent) => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        el.style.setProperty("--mx", (e.clientX / innerWidth - 0.5).toFixed(3));
-        el.style.setProperty("--my", (e.clientY / innerHeight - 0.5).toFixed(3));
-      });
-    };
+    const set = (k: string, v: number) => el.style.setProperty(k, v.toFixed(3));
+    const onScroll = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => set("--flat", Math.min(1, scrollY / (innerHeight * 0.55)))); };
+    const onMove = (e: PointerEvent) => { set("--mx", e.clientX / innerWidth - 0.5); set("--my", e.clientY / innerHeight - 0.5); };
+    addEventListener("scroll", onScroll, { passive: true });
     addEventListener("pointermove", onMove);
-    return () => { removeEventListener("pointermove", onMove); cancelAnimationFrame(raf); };
+    onScroll();
+    return () => { removeEventListener("scroll", onScroll); removeEventListener("pointermove", onMove); cancelAnimationFrame(raf); };
   }, []);
 
   return (
@@ -65,84 +74,104 @@ export function Hero() {
       {/* aurora + grid */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div className="aurora aurora-1" /><div className="aurora aurora-2" /><div className="aurora aurora-3" />
-        <div className="grid-lines absolute inset-0 [mask-image:radial-gradient(80%_70%_at_50%_20%,#000_20%,transparent_75%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-canvas to-transparent" />
+        <div className="grid-lines absolute inset-0 [mask-image:radial-gradient(80%_60%_at_50%_10%,#000_20%,transparent_75%)]" />
+        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-canvas to-transparent" />
       </div>
 
-      <div className="wrap grid items-center gap-14 pb-16 lg:grid-cols-[1.05fr_1fr] lg:gap-8 lg:pb-24">
-        <div className="relative z-10 text-center lg:text-left">
-          <p className="hero-in pill mx-auto !bg-white/[0.06] ring-1 ring-white/10 backdrop-blur lg:mx-0" style={{ "--d": "1.3s" } as CSSProperties}>
-            <span className="rounded-full bg-brand-solid px-2 py-0.5 text-[11px] font-bold text-white">New</span>AI campaign studio for any online store
-          </p>
-          <h1 className="display mt-6 text-[clamp(2.5rem,6.4vw,5.75rem)] leading-[0.98]">
-            <Line d={1.4}>Say the goal.</Line>
-            <Line d={1.5}>
-              Get the{" "}
-              <span className="relative inline-grid justify-items-center overflow-hidden align-bottom lg:justify-items-start">
-                {WORDS.map((w, i) => {
-                  const prev = (word - 1 + WORDS.length) % WORDS.length;
-                  const pos = i === word ? 0 : i === prev ? -110 : 110;
-                  return (
-                    <span key={w} aria-hidden={i !== word} className="text-grad col-start-1 row-start-1 whitespace-nowrap"
-                      style={{ transform: `translateY(${pos}%)`, opacity: i === word ? 1 : 0, transition: i === word || i === prev ? "transform .8s var(--ease-out), opacity .5s ease" : "none" }}>{w}</span>
-                  );
-                })}
-              </span>
-            </Line>
-            <Line d={1.6}>Approve it.</Line>
-          </h1>
-          <p className="hero-in mx-auto mt-7 max-w-xl text-[16px] leading-relaxed text-ink-2 md:text-[17px] lg:mx-0" style={{ "--d": "1.75s" } as CSSProperties}>
-            Describe what you want in plain English. We draft on-site campaigns from your real catalog, check them, preview them on your store, and put them live only when you approve.
-          </p>
+      <div className="wrap relative z-10 flex flex-col items-center text-center">
+        <p className="hero-in pill !bg-white/[0.06] ring-1 ring-white/10 backdrop-blur" style={{ "--d": "1.3s" } as CSSProperties}>
+          <span className="rounded-full bg-brand-solid px-2 py-0.5 text-[11px] font-bold text-white">New</span>AI campaign studio for any online store
+        </p>
+        <h1 className="display mt-6 text-[clamp(2.4rem,7.4vw,6.5rem)] leading-[0.95]">
+          <Line d={1.4}>Say the goal.</Line>
+          <Line d={1.5}>Approve the</Line>
+          {/* All words share one grid cell, so the line is as wide as the longest and never reflows */}
+          <Line d={1.6}>
+            <span className="relative inline-grid justify-items-center overflow-hidden align-bottom">
+              {SCENES.map(({ word }, i) => {
+                const prev = (scene - 1 + SCENES.length) % SCENES.length;
+                const pos = i === scene ? 0 : i === prev ? -110 : 110;
+                return (
+                  <span key={word} aria-hidden={i !== scene} className="text-grad col-start-1 row-start-1 whitespace-nowrap"
+                    style={{ transform: `translateY(${pos}%)`, opacity: i === scene ? 1 : 0, transition: i === scene || i === prev ? "transform .8s var(--ease-out), opacity .5s ease" : "none" }}>{word}.</span>
+                );
+              })}
+            </span>
+          </Line>
+        </h1>
+        <p className="hero-in mt-6 max-w-2xl text-[16px] leading-relaxed text-ink-2 md:text-[18px]" style={{ "--d": "1.75s" } as CSSProperties}>
+          Describe what you want in plain English. We draft on-site campaigns from your real catalog, check them, preview them on your store, and put them live only when you approve.
+        </p>
 
-          {/* Goal prompt */}
-          <form action="/signup" method="get" className="hero-in group relative mx-auto mt-8 max-w-xl lg:mx-0" style={{ "--d": "1.9s" } as CSSProperties}>
-            <div aria-hidden className="absolute -inset-px rounded-[1.4rem] bg-[conic-gradient(from_var(--ang),#2350ff,#8fb0ff,#1636b8,#2350ff)] opacity-70 blur-[2px] [animation:spin-ang_6s_linear_infinite]" />
-            <div className="relative flex items-center gap-2 rounded-[1.35rem] bg-[#0b0d14] p-2 pl-4">
-              <Sparkles className="size-5 shrink-0 text-brand" aria-hidden />
-              <label htmlFor="hero-goal" className="sr-only">Describe a goal</label>
-              <input id="hero-goal" name="goal" autoComplete="off" value={typed ?? auto} onChange={(e) => setTyped(e.target.value)} onFocus={() => setTyped((t) => t ?? "")}
-                placeholder="Describe a goal…" className="min-w-0 flex-1 bg-transparent py-2.5 text-[15px] text-white outline-none placeholder:text-white/35" />
-              <button type="submit" className="btn btn-primary !h-11 shrink-0 !px-5 text-[14px]">Draft it <ArrowRight className="size-4" aria-hidden /></button>
+        {/* Goal prompt */}
+        <form action="/signup" method="get" className="hero-in group relative mt-8 w-full max-w-2xl" style={{ "--d": "1.9s" } as CSSProperties}>
+          <div aria-hidden className="absolute -inset-px rounded-[1.4rem] bg-[conic-gradient(from_var(--ang),#2350ff,#8fb0ff,#1636b8,#2350ff)] opacity-70 blur-[2px] [animation:spin-ang_6s_linear_infinite]" />
+          <div className="relative flex items-center gap-2 rounded-[1.35rem] bg-[#0b0d14] p-2 pl-4">
+            <Sparkles className="size-5 shrink-0 text-brand" aria-hidden />
+            <label htmlFor="hero-goal" className="sr-only">Describe a goal</label>
+            <input id="hero-goal" name="goal" autoComplete="off" value={typed ?? auto} onChange={(e) => setTyped(e.target.value)} onFocus={() => setTyped((t) => t ?? "")}
+              placeholder="Describe a goal…" className="min-w-0 flex-1 bg-transparent py-3 text-left text-[15px] text-white outline-none placeholder:text-white/35" />
+            <button type="submit" className="btn btn-primary !h-12 shrink-0 !px-6 text-[14px]">Draft it <ArrowRight className="size-4" aria-hidden /></button>
+          </div>
+        </form>
+        <ul className="hero-in mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-[13px] text-ink-2" style={{ "--d": "2s" } as CSSProperties}>
+          {["Free plan available", "Shopify, WooCommerce & more", "Nothing goes live without you"].map((t) => <li key={t} className="flex items-center gap-1.5"><Check className="size-3.5 text-brand" strokeWidth={3} aria-hidden />{t}</li>)}
+        </ul>
+      </div>
+
+      {/* Stage: the storefront preview of the campaign named in the headline, with the studio and approval around it */}
+      <div aria-hidden className="wrap relative mt-14 md:mt-16 [perspective:1600px]">
+        <div ref={stage} className="hero-pop relative mx-auto max-w-[1100px] [transform-style:preserve-3d]" style={{ "--d": "2.1s", "--flat": 0, "--mx": 0, "--my": 0 } as CSSProperties}>
+          <div className="transition-transform duration-300 ease-out [transform-style:preserve-3d]" style={{ transform: "rotateX(calc((1 - var(--flat)) * 22deg + var(--my) * -4deg)) rotateY(calc(var(--mx) * 5deg)) scale(calc(0.92 + var(--flat) * 0.08))", transformOrigin: "50% 0%" }}>
+            <div aria-hidden className="absolute -inset-x-10 -top-10 bottom-10 -z-10 rounded-[3rem] bg-[radial-gradient(60%_60%_at_50%_30%,rgba(35,80,255,.45),transparent_70%)] blur-2xl" />
+            {/* browser window */}
+            <div className="overflow-hidden rounded-[1.5rem] bg-[#0b0d14] p-1.5 shadow-[0_60px_120px_-40px_rgba(0,0,0,.9)] ring-1 ring-white/15 md:rounded-[1.75rem] md:p-2">
+              <div className="flex items-center gap-3 px-3 pb-2 pt-1 md:px-4">
+                <span className="flex gap-1.5">{["#ff5f57", "#febc2e", "#28c840"].map((c) => <span key={c} className="size-2.5 rounded-full" style={{ background: c }} />)}</span>
+                <span className="mx-auto flex min-w-0 items-center gap-2 rounded-lg bg-white/5 px-3 py-1 text-[11px] text-white/50 md:text-[12px]"><Lock className="size-3" />{now.store.toLowerCase().replace(/[^a-z]+/g, "")}.store</span>
+                <span className="hidden items-center gap-1.5 rounded-full bg-brand-solid px-2.5 py-1 text-[11px] font-semibold text-white sm:flex"><span className="size-1.5 animate-pulse rounded-full bg-white" />Live preview</span>
+              </div>
+              <div className="overflow-hidden rounded-[1.1rem] md:rounded-[1.25rem]">
+                <Scaled width={1200} height={600}>
+                  <StoreMock key={scene} name={now.store} {...STORES[now.store]}>{now.overlay}</StoreMock>
+                </Scaled>
+              </div>
             </div>
-          </form>
 
-          <ul className="hero-in mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-[13px] text-ink-2 lg:justify-start" style={{ "--d": "2s" } as CSSProperties}>
-            {["Free plan available", "Shopify, WooCommerce & more", "Nothing goes live without you"].map((t) => <li key={t} className="flex items-center gap-1.5"><Check className="size-3.5 text-brand" strokeWidth={3} aria-hidden />{t}</li>)}
-          </ul>
-        </div>
-
-        {/* Collage */}
-        <div ref={stage} aria-hidden className="relative mx-auto aspect-[1/1.02] w-full max-w-[620px] [perspective:1400px]" style={{ "--mx": 0, "--my": 0 } as CSSProperties}>
-          <div className="absolute inset-0 transition-transform duration-500 ease-out [transform-style:preserve-3d]" style={{ transform: "rotateY(calc(var(--mx) * 8deg)) rotateX(calc(var(--my) * -8deg))" }}>
-            <Layer depth={14} d={1.45} className="left-[16%] top-[6%] h-[64%] w-[52%]"><PhotoCard k="p-shopper" /></Layer>
-            <Layer depth={26} d={1.6} className="right-0 top-0 h-[36%] w-[30%]"><PhotoCard k="p-chair-blue" /></Layer>
-            <Layer depth={22} d={1.7} className="right-[1%] top-[40%] h-[42%] w-[34%]"><PhotoCard k="p-serum-apply" /></Layer>
-            <Layer depth={32} d={1.8} className="bottom-[3%] left-0 h-[30%] w-[38%]"><PhotoCard k="p-sneaker" /></Layer>
-
-            {/* campaign UI on top of the photos */}
-            <Layer depth={40} d={2.0} className="left-[28%] top-[50%] w-[44%]">
-              <div className="rounded-2xl bg-white p-4 text-[#0a0c14] shadow-[0_30px_60px_-20px_rgba(0,0,0,.7)]">
-                <p className="font-display text-[clamp(11px,1.5vw,15px)] font-bold uppercase leading-tight">First access to new drops</p>
-                <p className="mt-1 text-[clamp(9px,1vw,11px)] text-black/55">Join the list. Unsubscribe any time.</p>
-                <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-black/15 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] text-black/40"><Mail className="size-3" />you@email.com</div>
-                <span className="mt-2 block rounded-full bg-[#2350ff] py-1.5 text-center text-[clamp(9px,1vw,11px)] font-semibold text-white">Subscribe</span>
+            {/* studio card: the goal that produced this campaign, and the checks it passed */}
+            <div className="absolute -left-4 top-[18%] hidden w-[17.5rem] text-left md:block lg:-left-16 xl:-left-24" style={{ transform: "translateZ(60px)" }}>
+              <div className="float-card rounded-2xl bg-[#0b0d14]/95 p-4 text-white shadow-[0_30px_60px_-20px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur">
+                <p className="flex items-center gap-2 text-[12px] font-semibold"><LogoMark className="size-4" />AI studio<span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/60">Draft</span></p>
+                <p key={`g${scene}`} className="hero-in mt-3 rounded-xl bg-brand-solid px-3 py-2 text-[12.5px] leading-snug" style={{ "--d": "0s" } as CSSProperties}>{now.goal}</p>
+                <ul className="mt-3 space-y-1.5">
+                  {CHECKS.map((c, i) => (
+                    <li key={`${scene}-${c}`} className="hero-in flex items-center gap-2 text-[11.5px] text-white/70" style={{ "--d": `${0.4 + i * 0.25}s` } as CSSProperties}>
+                      <span className="grid size-4 shrink-0 place-items-center rounded-full bg-ok/20 text-ok"><Check className="size-2.5" strokeWidth={3.5} /></span>{c}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </Layer>
-            <Layer depth={48} d={2.15} className="-left-[2%] top-[18%]"><Chip icon={<ShieldCheck className="size-4" />} k="Policy checks" v="4 of 4 passed" /></Layer>
-            <Layer depth={52} d={2.3} className="right-[6%] top-[33%]"><Chip icon={<Check className="size-4" strokeWidth={3} />} k="Approved" v="v3 is live" /></Layer>
-            <Layer depth={44} d={2.45} className="bottom-[0%] right-[4%] w-[52%]">
-              <div className="flex items-center gap-3 rounded-2xl bg-[#0b0d14]/95 p-3 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#2350ff]"><Truck className="size-4" /></span>
-                <span className="min-w-0"><span className="block truncate text-[12px] font-semibold">You are $12 from free shipping</span><span className="block text-[11px] text-white/50">Announcement bar · cart over $40</span></span>
+            </div>
+
+            {/* approval card with a 3D block, on the other side */}
+            <div className="absolute -right-4 bottom-[14%] hidden w-[15rem] text-left md:block lg:-right-14 xl:-right-20" style={{ transform: "translateZ(90px)" }}>
+              <div className="float-card-b flex items-center gap-3 rounded-2xl bg-white p-3 text-[#0a0c14] shadow-[0_30px_60px_-20px_rgba(0,0,0,.9)]">
+                <span className="relative size-14 shrink-0 overflow-hidden rounded-xl bg-brand-solid"><BlockScene kind="stack" tone="white" size={16} className="absolute inset-0" /></span>
+                <span className="min-w-0">
+                  <span className="block text-[11px] text-black/50">You approved</span>
+                  <span className="block truncate text-[14px] font-bold capitalize">{now.word}, v3</span>
+                  <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-brand-solid"><span className="size-1.5 rounded-full bg-ok" />Live on {now.store}</span>
+                </span>
               </div>
-            </Layer>
+            </div>
+            <div className="absolute -right-6 -top-10 hidden size-28 md:block lg:-right-16" style={{ transform: "translateZ(120px)" }}><BlockScene kind="orbit" tone="blue" size={40} className="size-full !overflow-visible" /></div>
+            <div className="absolute -bottom-8 left-[12%] hidden size-24 md:block" style={{ transform: "translateZ(100px)" }}><BlockScene kind="spin" tone="white" size={34} className="size-full !overflow-visible" /></div>
           </div>
         </div>
       </div>
 
       {/* industry photo strip */}
-      <div className="relative border-t border-white/10 bg-canvas/60 py-5 backdrop-blur">
+      <div className="relative mt-16 border-t border-white/10 bg-canvas/60 py-5 backdrop-blur md:mt-24">
         <div className="marquee-pause overflow-hidden">
           <div className="marquee" style={{ "--marquee-dur": "38s" } as CSSProperties}>
             {[0, 1].map((k) => (
@@ -164,25 +193,4 @@ export function Hero() {
 
 function Line({ children, d }: { children: ReactNode; d: number }) {
   return <span className="block overflow-hidden pb-[0.06em]"><span className="hero-line block" style={{ "--d": `${d}s` } as CSSProperties}>{children}</span></span>;
-}
-
-function Layer({ children, depth, d, className }: { children: ReactNode; depth: number; d: number; className: string }) {
-  return (
-    <div className={`absolute ${className}`} style={{ transform: `translate3d(calc(var(--mx) * ${-depth}px), calc(var(--my) * ${-depth}px), ${depth}px)` }}>
-      <div className="hero-pop size-full" style={{ "--d": `${d}s` } as CSSProperties}>{children}</div>
-    </div>
-  );
-}
-
-function PhotoCard({ k }: { k: PhotoKey }) {
-  return <div className="size-full overflow-hidden rounded-[1.5rem] shadow-[0_30px_60px_-24px_rgba(0,0,0,.8)] ring-1 ring-white/10"><Photo k={k} w={700} eager className="size-full" /></div>;
-}
-
-function Chip({ icon, k, v }: { icon: ReactNode; k: string; v: string }) {
-  return (
-    <div className="float flex items-center gap-2.5 rounded-2xl bg-[#0b0d14]/90 py-2 pl-2 pr-4 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
-      <span className="grid size-8 place-items-center rounded-xl bg-[#2350ff]">{icon}</span>
-      <span><span className="block text-[10.5px] text-white/50">{k}</span><span className="block text-[12.5px] font-semibold">{v}</span></span>
-    </div>
-  );
 }

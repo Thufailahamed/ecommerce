@@ -47,6 +47,50 @@ export function Panel({ children, className = "", trap = true, id, label }: { ch
 }
 
 /**
+ * A row of cards that stack up as you scroll: the row pins in the middle of the viewport and vertical scroll drives
+ * its scrollLeft. Each card is sticky on both sides, so finished cards pile up on the left with a sliver showing and
+ * upcoming cards wait in a staggered stack on the right (offsets come from `--i` in `.stack-slider`).
+ * The wrapper is (viewport + horizontal travel) tall, so the last card lands exactly as the pin releases.
+ * Reduced motion gets a plain horizontally scrollable row.
+ */
+export function StackSlider({ children }: { children: ReactNode }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const o = outer.current, r = row.current;
+    if (!o || !r) return;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const travel = () => Math.max(0, r.scrollWidth - r.clientWidth);
+    const update = () => {
+      if (reduced.matches) return;
+      const pinTop = (innerHeight - r.offsetHeight) / 2;
+      r.scrollLeft = Math.min(travel(), Math.max(0, pinTop - o.getBoundingClientRect().top));
+    };
+    const size = () => {
+      const pinTop = (innerHeight - r.offsetHeight) / 2;
+      r.style.top = reduced.matches ? "" : `${pinTop}px`;
+      o.style.height = reduced.matches ? "" : `${r.offsetHeight + travel() + Math.max(0, innerHeight - r.offsetHeight)}px`;
+      update();
+    };
+    const ro = new ResizeObserver(size);
+    ro.observe(r);
+    addEventListener("scroll", update, { passive: true });
+    addEventListener("resize", size);
+    size();
+    return () => {
+      ro.disconnect();
+      removeEventListener("scroll", update);
+      removeEventListener("resize", size);
+    };
+  }, []);
+  return (
+    <div ref={outer}>
+      <div ref={row} className="stack-slider">{children}</div>
+    </div>
+  );
+}
+
+/**
  * Renders children at a fixed design size (default 1000×625) and scales them to fill the parent's width, so a
  * detailed mock reads the same in a phone-width card and a desktop laptop screen.
  */

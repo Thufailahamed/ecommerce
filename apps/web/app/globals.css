@@ -135,6 +135,44 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-
 .trap { position: relative; }
 .trap::before { content: ""; position: absolute; left: 0; top: 1px; width: 100%; height: 20px; transform: translateY(-100%); background: inherit; clip-path: polygon(20px 0, calc(100% - 20px) 0, 100% 100%, 0 100%); pointer-events: none; }
 .stack { position: sticky; top: 0; }
+/* Stacking card row (see StackSlider): sticky cards on both edges, offsets per card from --i */
+.stack-slider { position: sticky; display: flex; flex-wrap: nowrap; overflow-x: hidden; scrollbar-width: none; border-block: 1px solid var(--line); }
+.stack-slider > * { position: sticky; min-width: 901px; height: 800px; padding: 40px; background: var(--surface); left: calc(var(--i) * 50px); right: calc(500px - var(--i) * 400px); }
+.stack-slider > * + * { border-left: 1px solid var(--line); }
+@media (max-width: 1440px) { .stack-slider > * { min-width: 621px; height: 640px; padding: 32px; left: calc(var(--i) * 20px); right: calc(220px - var(--i) * 220px); } }
+@media (max-width: 1024px) { .stack-slider > * { min-width: 689px; right: 100%; left: calc(var(--i) * 26px); } }
+@media (max-width: 767px) { .stack-slider > * { min-width: min(621px, calc(100vw - 32px)); padding: 20px 16px 16px; left: calc(var(--i) * 5px); } }
+@media (prefers-reduced-motion: reduce) { .stack-slider { position: relative; overflow-x: auto; } .stack-slider > * { position: relative; left: auto; right: auto; } }
+
+/* ---------- Isometric 3D blocks (see blocks.tsx). Fades use scale, not opacity: opacity would flatten the 3D faces. ---------- */
+.iso-scene { display: grid; place-items: center; overflow: hidden; perspective: 1400px; }
+.iso { position: relative; width: 0; height: 0; transform-style: preserve-3d; transform: rotateX(-32deg) rotateY(45deg); }
+.iso > div, .iso-spin, .iso-tumble { position: absolute; transform-style: preserve-3d; }
+.iso-spin { animation: iso-spin 7s linear infinite; }
+.iso-tumble { animation: iso-tumble 6s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes iso-spin { to { transform: rotateY(360deg); } }
+@keyframes iso-tumble { 0% { transform: none; } 25% { transform: rotateX(90deg); } 50% { transform: rotateX(90deg) rotateZ(90deg); } 75% { transform: rotateX(180deg) rotateZ(90deg); } 100% { transform: rotateX(180deg) rotateZ(180deg); } }
+.box { position: absolute; left: calc(var(--s) / -2); top: calc(var(--s) / -2); width: var(--s); height: var(--s); transform-style: preserve-3d; }
+.box > i { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.box-front { transform: translateZ(calc(var(--s) / 2)); }
+.box-back { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+.box-right { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+.box-left { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+.box-top { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+.box-bottom { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+.box-drop { animation: box-drop 3.6s cubic-bezier(.3,1.4,.5,1) infinite both; }
+@keyframes box-drop { 0% { translate: 0 calc(var(--s) * -4); scale: 0; } 18% { translate: 0 0; scale: 1; } 78% { translate: 0 0; scale: 1; } 92%, 100% { translate: 0 0; scale: 0; } }
+.box-split { animation: box-split 4s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes box-split { 0%, 25%, 100% { translate: 0 0 0; } 50%, 75% { translate: var(--dx) 0 var(--dz); } }
+.box-fall { scale: 0; animation: box-fall 4.8s linear infinite; }
+@keyframes box-fall { 0% { translate: 0 calc(var(--fall, 140px) * -1); rotate: y 0deg; scale: 0; } 12%, 88% { scale: 1; } 100% { translate: 0 var(--fall, 140px); rotate: y 90deg; scale: 0; } }
+.box-rise { scale: 0; animation: box-rise 6s cubic-bezier(.3,1.4,.5,1) infinite both; }
+@keyframes box-rise { 0% { translate: 0 calc(var(--s) * -1.5); scale: 0; } 8%, 80% { translate: 0 0; scale: 1; } 92%, 100% { translate: 0 0; scale: 0; } }
+/* Slow push-in on a photo, for cards that otherwise sit still */
+.photo-drift { animation: photo-drift 14s ease-in-out infinite alternate; }
+@keyframes photo-drift { from { transform: scale(1.04) translate(0, 0); } to { transform: scale(1.16) translate(-2%, -3%); } }
+.iso-paused *, .iso-paused { animation-play-state: paused !important; }
+.group:hover .iso-paused *, .group:hover .iso-paused { animation-play-state: running !important; }
 
 /* ---------- Marquee ---------- */
 .marquee { display: flex; width: max-content; animation: marquee var(--marquee-dur, 18s) linear infinite; }
@@ -276,5 +314,6 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-
 @media (prefers-reduced-motion: reduce) {
   *, .reveal, .marquee, .preloader, .hero-in, .hero-line, .hero-pop { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .preloader { display: none; }
+  .box-fall, .box-rise { scale: 1; }
   .rv, .rv-mask { opacity: 1; transform: none; clip-path: none; filter: none; }
 }

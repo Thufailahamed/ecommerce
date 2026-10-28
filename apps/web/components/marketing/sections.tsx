@@ -1,11 +1,12 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Accessibility, ArrowDown, ArrowUpRight, BarChart3, BellRing, Boxes, Check, Clock, Code2, Eye, FileCheck, FlaskConical, Gauge, Globe, History, Layers, LayoutTemplate, Lock, MousePointerClick, Plus, Power, ShieldCheck, Sparkles, Store, Target, Users, X } from "lucide-react";
 import { PLANS } from "@convertflow/contracts";
 import { BRAND } from "@/lib/brand";
 import { HeroDemo } from "./hero-demo";
-import { Marquee, Panel, Reveal, Scaled } from "./fx";
+import { Marquee, Panel, Reveal, Scaled, StackSlider } from "./fx";
 import { BarMock, Photo, PopupMock, SlideInMock, STORES, StoreMock, ToastMock, type PhotoKey, type StoreName } from "./art";
+import { BlockScene, CubeTowers, type SceneKind } from "./blocks";
 import { Flows, Industries, TemplateRows } from "./industries";
 import { Studio } from "./story";
 
@@ -21,18 +22,6 @@ export function SectionHead({ eyebrow, title, sub, className = "" }: { eyebrow: 
 }
 
 const Hexagon = () => <span aria-hidden className="mx-[0.3em] inline-block size-[0.55em] bg-current align-middle [clip-path:polygon(25%_4%,75%_4%,100%_50%,75%_96%,25%_96%,0_50%)]" />;
-
-/** Isometric cube drawn from three faces. */
-function Cube({ className = "", tone = "blue" }: { className?: string; tone?: "blue" | "white" | "dark" }) {
-  const f = { blue: ["#7c9cff", "#2350ff", "#1636b8"], white: ["#ffffff", "#d3d9ea", "#9aa3bd"], dark: ["#2a2e3b", "#1b1e29", "#101219"] }[tone];
-  return (
-    <svg viewBox="0 0 52 60" className={className} aria-hidden>
-      <polygon points="26,0 52,15 26,30 0,15" fill={f[0]} />
-      <polygon points="0,15 26,30 26,60 0,45" fill={f[1]} />
-      <polygon points="52,15 26,30 26,60 52,45" fill={f[2]} />
-    </svg>
-  );
-}
 
 /* ---------- image cards right after the intro: product shots with a campaign and a true fact on top ---------- */
 export function ImageCards() {
@@ -136,11 +125,11 @@ export function IntegrationStrip() {
 
 /* ---------- about: blue band with marquee, dark panel with problems and outcomes ---------- */
 export function About() {
-  const rows: [string, string, string][] = [
-    ["Same popup for everyone", "Templates that ignore the page and the shopper.", "Drafts built from your real catalog and rules."],
-    ["Discounts by default", "A code shown to every visitor, margin and all.", "Promotions only when you explicitly authorise them."],
-    ["Widgets that fight", "Five tools competing for the same screen.", "One engine picks one campaign, deterministically."],
-    ["No idea what worked", "Revenue claimed for anything that was shown.", "Observed, attributed and incremental kept apart."],
+  const rows: [string, string, string, PhotoKey][] = [
+    ["Same popup for everyone", "Templates that ignore the page and the shopper.", "Drafts built from your real catalog and rules.", "p-shopper"],
+    ["Discounts by default", "A code shown to every visitor, margin and all.", "Promotions only when you explicitly authorise them.", "p-sneaker-white"],
+    ["Widgets that fight", "Five tools competing for the same screen.", "One engine picks one campaign, deterministically.", "p-headphones-pink"],
+    ["No idea what worked", "Revenue claimed for anything that was shown.", "Observed, attributed and incremental kept apart.", "p-shopper-laptop"],
   ];
   return (
     <Panel label="About" className="bg-brand-solid">
@@ -156,8 +145,12 @@ export function About() {
             </p></Reveal>
           </div>
           <div className="mt-14 grid gap-3 border-t border-white/10 pt-10 sm:grid-cols-2 lg:grid-cols-4">
-            {rows.map(([t, bad, good], i) => (
+            {rows.map(([t, bad, good, photo], i) => (
               <Reveal key={t} delay={i * 90} className="spot flex flex-col overflow-hidden rounded-[1.25rem] bg-canvas ring-1 ring-white/10">
+                <div className="relative h-36 overflow-hidden">
+                  <Photo k={photo} w={600} className="photo-drift absolute inset-0 size-full" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/20 to-transparent" />
+                </div>
                 <div className="p-5">
                   <span className="num text-[11px] text-white/40">{String(i + 1).padStart(2, "0")}</span>
                   <h3 className="mt-2 font-display text-[15px] font-bold uppercase">{t}</h3>
@@ -202,61 +195,119 @@ export function FlowsSection() {
   );
 }
 
-/* ---------- pillars: numbered light rows that stack as you scroll ---------- */
-function PillarVisual({ i }: { i: number }) {
-  if (i === 0) return <div className="overflow-hidden rounded-[1.25rem]"><Scaled width={800} height={500}><StoreMock name="Northpeak" {...STORES["Northpeak"]}><Studio mode="goal" /></StoreMock></Scaled></div>;
-  if (i === 2) return <div className="overflow-hidden rounded-[1.25rem]"><Scaled width={800} height={500}><StoreMock name="Lumen Skin" {...STORES["Lumen Skin"]} accent="#8a3b55"><PopupMock title="First access to new shades" body="Join for launches and restocks." cta="Sign me up" product="p-cream" email /></StoreMock></Scaled></div>;
-  const body = i === 1 ? (
-    <div className="w-full max-w-sm space-y-2">
-      <p className="text-[12px] font-semibold uppercase tracking-wider text-danger">The AI cannot</p>
-      {["Invent a discount, coupon or price", "Claim stock we do not know", "Link shoppers to another website", "Publish anything by itself"].map((t) => <div key={t} className="flex items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2.5 text-[13px] text-white/85"><X className="size-4 text-danger" strokeWidth={3} aria-hidden />{t}</div>)}
-    </div>
-  ) : i === 3 ? (
-    <div className="w-full max-w-sm space-y-2">
-      {[["v3", "live", true], ["v2", "previous", false], ["v1", "first draft", false]].map(([v, l, live]) => (
-        <div key={String(v)} className={`flex items-center justify-between rounded-xl px-4 py-3 text-[13px] ${live ? "bg-brand-solid text-white" : "bg-white/5 text-white/60"}`}><span><span className="num font-semibold">{v}</span> · {l}</span>{live ? <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-brand-solid">Live</span> : <span>Roll back</span>}</div>
-      ))}
-      <div className="flex items-center gap-2 rounded-xl bg-white/5 px-4 py-3 text-[13px] text-white/60"><Power className="size-4 text-danger" aria-hidden />Store-wide kill switch</div>
-    </div>
-  ) : (
-    <div className="flex h-40 w-full max-w-sm items-end gap-2">
-      {[38, 52, 44, 61, 57, 70, 66, 78, 72, 92].map((h, k) => <div key={k} className="flex-1 rounded-t-md bg-[linear-gradient(180deg,#8fb0ff,#2350ff)]" style={{ height: `${h}%` }} />)}
-    </div>
-  );
-  return <div className="grid h-64 place-items-center overflow-hidden rounded-[1.25rem] bg-[#0a0c14] p-6 md:h-80">{body}</div>;
+/* ---------- pillars: a row of capability cards that stack up from the right as you scroll ---------- */
+const CARD_TITLE = "font-display text-[28px] font-bold uppercase leading-8";
+const CARD_TEXT = "text-[14px] font-semibold leading-5 text-black/40";
+/** Product mock pinned to the bottom of a card, sized down with the card. */
+const CARD_MOCK = "mt-auto w-full max-w-[420px] self-end overflow-hidden rounded-[20px] min-[1441px]:max-w-[682px] max-md:max-w-[262px] max-md:self-start max-md:rounded-xl";
+
+function Rule({ className = "" }: { className?: string }) {
+  return <hr className={`h-px border-0 bg-black/10 ${className}`} />;
 }
 
 export function Pillars() {
-  const rows: [typeof Sparkles, string, string, string[]][] = [
-    [Sparkles, "AI campaign studio", "Describe a goal in plain English, plus any constraints. The AI sees your catalog titles, links and availability, and treats store text as data, never as instructions.", ["Editable draft with trigger, audience and copy", "An explanation of why it chose them", "Works from your real catalog"]],
-    [ShieldCheck, "Guardrails by design", "Model output is treated as untrusted. It is schema-checked and policy-checked on our servers before it ever reaches your editor, and a stale approval is refused if the draft changed after you reviewed it.", ["Cannot invent a discount, coupon or price", "Cannot claim stock we do not know", "Cannot link to another site or publish by itself"]],
-    [Layers, "Live, exact preview", "Every proposal is rendered in a live preview on desktop and mobile using the same renderer your storefront runs. What you approve is what shoppers see.", ["Same code as the storefront", "Desktop and mobile", "Edit any word, rule or colour"]],
-    [History, "Versions and rollback", "Publishing creates an immutable version. Restore any earlier one as a new version, pause a single campaign, or switch everything off with the store-wide kill switch.", ["Immutable publishes", "One-click rollback", "Store-wide kill switch"]],
-    [BarChart3, "Honest analytics", "A purchase after an impression does not prove the campaign caused it. Observed, attributed and incremental are kept apart so you never over-read a dashboard.", ["Consent-first recording", "7-day last-click attribution, labelled", "Holdout experiments for real lift"]],
+  const guards: [typeof X, string, string, "blue" | "dark", SceneKind][] = [
+    [Sparkles, "No invented offers", "Cannot make up a discount, coupon or price. Promotions appear only when you authorise them.", "blue", "spin"],
+    [Boxes, "No guessed stock", "Cannot claim availability we do not know from your catalog.", "dark", "stack"],
+    [Globe, "No outside links", "Cannot send shoppers to another website.", "blue", "split"],
+    [Lock, "No self-publishing", "Nothing goes live until you approve it, and a stale approval is refused.", "dark", "orbit"],
   ];
+  const versions: [string, string, SceneKind][] = [
+    ["Immutable", "every publish is frozen as its own version", "spin"],
+    ["1 click", "to restore any earlier version", "orbit"],
+    ["New version", "a restore never rewrites history", "stack"],
+    ["Pause", "a single campaign without touching the rest", "tumble"],
+    ["Store-wide", "kill switch stops every campaign at once", "split"],
+  ];
+  const card = (i: number) => ({ "--i": i }) as CSSProperties;
   return (
-    <section id="features" aria-label="Core capabilities" className="relative isolate">
-      {rows.map(([Icon, t, d, pts], i) => (
-        <div key={t} className={`trap sticky ${i % 2 ? "bg-white" : "bg-paper"} text-[#0a0c14]`} style={{ top: `${4.5 + i * 4.75}rem`, zIndex: i + 1, minHeight: `calc(100dvh - ${4.5 + i * 4.75}rem)` }}>
-          <div className="wrap">
-            <div className="flex h-[4.75rem] items-center gap-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-brand-solid text-white shadow-[0_10px_24px_-10px_rgba(35,80,255,1)]"><Icon className="size-5" aria-hidden /></span>
-              <h3 className="display truncate text-[clamp(1.1rem,3vw,2.5rem)]">{t}</h3>
-              <span aria-hidden className="display ml-auto text-[clamp(1.5rem,3vw,2.75rem)] text-transparent [-webkit-text-stroke:1.5px_rgba(35,80,255,.45)]">{String(i + 1).padStart(2, "0")}</span>
-            </div>
-            <div className="grid gap-8 pb-16 pt-6 md:grid-cols-[1.2fr_1fr] md:pb-24">
-              <PillarVisual i={i} />
-              <div>
-                <p className="eyebrow !text-brand-solid">Capability</p>
-                <p className="mt-4 max-w-2xl text-[17px] leading-relaxed text-black/70">{d}</p>
-                <ul className="mt-8 divide-y divide-black/10 border-y border-black/10">
-                  {pts.map((p) => <li key={p} className="flex items-center gap-3 py-4 text-[15px] font-medium"><span className="grid size-5 place-items-center rounded-full bg-brand-solid text-white"><Check className="size-3" strokeWidth={3} aria-hidden /></span>{p}</li>)}
-                </ul>
+    <section id="features" aria-label="Core capabilities" className="trap on-light relative isolate flex flex-col gap-10 bg-surface pb-[76px] pt-20 text-[#0a0c14] max-[1441px]:gap-8 max-[1441px]:pb-20 max-[1441px]:pt-[60px] max-md:gap-5 max-md:pt-9">
+      <Rule className="mx-10 max-[1441px]:mx-4" />
+      <Reveal className="w-1/2 self-end pr-10 max-[1441px]:pr-4 max-lg:w-full max-lg:pl-4">
+        <h2 className="font-display text-[28px] font-bold uppercase leading-8 max-lg:text-[32px] max-lg:leading-9 max-md:text-[24px] max-md:leading-7">
+          Five capabilities behind every campaign. The AI drafts, you decide, and everything it proposes is checked, previewed, versioned and measured honestly.
+        </h2>
+      </Reveal>
+      <StackSlider>
+        {/* 1: studio, text up top and the product mock in the bottom corner */}
+        <article style={card(0)} className="flex flex-col">
+          <h3 className={`${CARD_TITLE} mb-10 max-[1441px]:mb-5`}>AI campaign studio</h3>
+          <p className={CARD_TEXT}>Describe a goal in plain English, plus any constraints. The AI sees your catalog titles, links and availability, and treats store text as data, never as instructions. You get an editable draft with trigger, audience and copy, and an explanation of why it chose them.</p>
+          <div className={CARD_MOCK}><Scaled width={800} height={500}><StoreMock name="Northpeak" {...STORES["Northpeak"]}><Studio mode="goal" /></StoreMock></Scaled></div>
+        </article>
+
+        {/* 2: guardrails, a stacked list of grey rows with a cube tile each */}
+        <article style={card(1)} className="flex flex-col">
+          <h3 className={`${CARD_TITLE} mb-10 max-[1441px]:mb-7 max-md:mb-4`}>Guardrails by design</h3>
+          <ul className="flex flex-1 flex-col justify-between gap-4 max-[1441px]:gap-3 max-md:gap-0">
+            {guards.map(([Icon, t, d, tone, scene]) => (
+              <li key={t} className="grid grid-cols-[auto_1fr] grid-rows-[1fr_1px_1fr] items-center gap-x-6 gap-y-4 rounded-[20px] bg-[#f1f2f6] py-5 pl-5 max-[1441px]:gap-x-4 max-[1441px]:gap-y-2 max-[1441px]:py-4 max-[1441px]:pl-4 max-md:grid-cols-[1fr_auto] max-md:grid-rows-[auto_auto] max-md:gap-y-3 max-md:rounded-none max-md:border-b max-md:border-black/10 max-md:p-5 max-md:first:rounded-t-xl max-md:last:rounded-b-xl max-md:last:border-0">
+                <span className={`relative row-span-3 grid aspect-square h-[108px] place-items-center overflow-hidden rounded-lg max-[1441px]:h-[84px] max-md:col-start-2 max-md:row-start-1 max-md:row-span-1 max-md:h-8 ${tone === "blue" ? "bg-brand-solid" : "bg-[#0a0c14]"}`}>
+                  <BlockScene kind={scene} tone={tone === "blue" ? "white" : "blue"} size={30} className="absolute inset-0 min-[1441px]:scale-[1.25] max-md:hidden" />
+                  <Icon className="hidden size-4 text-white max-md:block" aria-hidden />
+                </span>
+                <h4 className="self-end font-display text-[28px] font-bold uppercase leading-8 max-[1441px]:text-[18px] max-[1441px]:leading-6 max-md:row-start-1 max-md:self-center max-md:text-[14px] max-md:leading-5">{t}</h4>
+                <Rule className="max-[1441px]:hidden" />
+                <p className="mr-6 self-start text-[14px] leading-5 text-[#ababab] max-md:col-span-2 max-md:mr-0">{d}</p>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        {/* 3: live preview, same shape as the studio card */}
+        <article style={card(2)} className="flex flex-col">
+          <h3 className={`${CARD_TITLE} mb-10 max-[1441px]:mb-5`}>Live, exact preview</h3>
+          <p className={CARD_TEXT}>Every proposal is rendered in a live preview on desktop and mobile using the same renderer your storefront runs. Edit any word, rule or colour. What you approve is exactly what shoppers see.</p>
+          <div className={CARD_MOCK}><Scaled width={800} height={500}><StoreMock name="Lumen Skin" {...STORES["Lumen Skin"]} accent="#8a3b55"><PopupMock title="First access to new shades" body="Join for launches and restocks." cta="Sign me up" product="p-cream" email /></StoreMock></Scaled></div>
+        </article>
+
+        {/* 4: versions, a grid of fact blocks led by one dark block */}
+        <article style={card(3)} className="flex flex-col">
+          <h3 className={`${CARD_TITLE} mb-9 max-[1441px]:mb-5`}>Versions and rollback</h3>
+          <div className="flex flex-col gap-8 max-[1441px]:gap-4">
+            <p className={`${CARD_TEXT} max-md:hidden`}>Publishing creates an immutable version. Restore any earlier one as a new version, pause a single campaign, or switch everything off at once.</p>
+            <div className="grid grid-cols-2 gap-4 max-[1441px]:gap-3">
+              <div className="grid grid-cols-[1fr_auto] grid-rows-[auto_1px_1fr] gap-x-3 gap-y-3 rounded-[20px] bg-[#0a0c14] p-4 text-white min-[1441px]:h-[148px] max-[1441px]:h-[120px] max-md:h-auto">
+                <span className="font-display text-[28px] font-bold leading-8 text-brand-glow">v3</span>
+                <span className="relative row-span-3 w-20 overflow-hidden rounded-xl bg-brand-solid">
+                  <BlockScene kind="stack" tone="white" size={22} className="absolute inset-0 bottom-4" />
+                  <span className="absolute inset-x-0 bottom-1.5 text-center text-[11px] font-semibold">Live</span>
+                </span>
+                <Rule className="bg-white/20" />
+                <p className="text-[14px] leading-5 text-white/40">the version shoppers see now</p>
               </div>
+              {versions.map(([v, l, scene]) => (
+                <div key={v} className="group relative flex flex-col gap-3 rounded-[20px] bg-[#f1f2f6] p-4 min-[1441px]:h-[148px] max-[1441px]:h-[120px] max-md:h-auto">
+                  {/* "Pause" is the one scene that stands still until hovered */}
+                  <BlockScene kind={scene} tone="blue" size={14} paused={scene === "tumble"} className="absolute right-3 top-3 size-10 rounded-lg bg-white" />
+                  <span className="pr-12 font-display text-[28px] font-bold uppercase leading-8 max-[1441px]:text-[19px] max-[1441px]:leading-6">{v}</span>
+                  <Rule />
+                  <p className="text-[14px] leading-5 text-black/40">{l}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      ))}
+        </article>
+
+        {/* 5: analytics, text plus a dark panel that steps from observed to incremental */}
+        <article style={card(4)} className="flex flex-col">
+          <h3 className={`${CARD_TITLE} mb-10 max-[1441px]:mb-5`}>Honest analytics</h3>
+          <p className={`${CARD_TEXT} mb-10 max-[1441px]:mb-5`}>A purchase after an impression does not prove the campaign caused it. Observed, attributed and incremental are kept apart, recording is consent-first, and holdout experiments measure real lift.</p>
+          <div className="flex flex-1 flex-col rounded-[20px] bg-[#0a0c14] p-5 text-white max-[1441px]:rounded-xl max-[1441px]:px-3.5 max-[1441px]:pb-3.5 max-[1441px]:pt-3">
+            <span className="font-display text-[28px] font-bold uppercase leading-8">Lift</span>
+            <div className="mt-6 grid grid-cols-3 gap-2 max-[1441px]:mt-4">
+              {[100, 100, 50].map((w, k) => <span key={k} className="h-1 overflow-hidden rounded-sm bg-white/20"><span className="block h-full bg-white" style={{ width: `${w}%` }} /></span>)}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-[14px] leading-5 text-white/60">
+              <span>Observed</span><span>Attributed, 7-day last click</span><span className="text-white">Incremental</span>
+            </div>
+            <div className="relative my-4 min-h-[120px] flex-1 overflow-hidden rounded-[20px] bg-[#1b1e29] max-[1441px]:rounded-xl">
+              <CubeTowers towers={[[4, "white"], [3, "blue"], [1, "dark"]]} size={36} className="absolute inset-0 min-[1441px]:scale-[1.3]" />
+            </div>
+            <span className="grid h-14 place-items-center rounded-full bg-brand-solid text-[14px] font-semibold max-[1441px]:h-12">Holdout experiments for real lift</span>
+          </div>
+        </article>
+      </StackSlider>
     </section>
   );
 }
@@ -309,7 +360,10 @@ export function Engine() {
             <h2 className="h3">Decision engine</h2>
             <div className="relative h-72 overflow-hidden rounded-[1.25rem] bg-[#0a0c14] lg:h-auto">
               <div className="pulse-line absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2" />
-              {(["white", "white", "blue"] as const).map((tone, k) => <div key={k} className="float absolute left-1/2 w-12 -translate-x-1/2" style={{ top: `${12 + k * 26}%`, animationDelay: `${k * 0.5}s` }}><Cube tone={tone} /></div>)}
+              {/* Product cubes drop through the pipeline's checks; the gates mark where rules are evaluated */}
+              {[22, 50, 78].map((y) => <div key={y} aria-hidden className="absolute inset-x-[18%] h-px bg-[linear-gradient(90deg,transparent,rgba(143,176,255,.7),transparent)]" style={{ top: `${y}%` }} />)}
+              <BlockScene kind="fall" tone="blue" size={72} photos={["p-sneaker", "p-serum", "p-headphones", "p-watch"]} className="absolute inset-0 [--fall:300px]" />
+              <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-brand-solid px-3 py-1 text-[11px] font-semibold text-white">One campaign renders</span>
             </div>
             <div>
               <p className="text-[17px] leading-relaxed text-black/70">Every page view runs the same deterministic pipeline, locally in the browser. No network call to an AI model happens on your storefront, and if our API is unreachable the last published campaigns keep working.</p>
@@ -328,9 +382,11 @@ export function Engine() {
 
           <div className="mt-20 grid gap-8 border-t border-black/10 pt-14 lg:grid-cols-[1fr_1fr_1.6fr]">
             <h2 className="h3">Analytics you can defend</h2>
-            <div className="relative h-72 overflow-hidden rounded-[1.25rem] bg-[#0a0c14] p-6 lg:h-auto" aria-hidden>
-              <div className="flex h-full items-end gap-2">
-                {[38, 52, 44, 61, 57, 70, 66, 78, 72, 92].map((h, i) => <Reveal key={i} delay={i * 60} className="flex-1"><div className="rounded-t-md bg-[linear-gradient(180deg,#8fb0ff,#2350ff)]" style={{ height: `${h * 2}px` }} /></Reveal>)}
+            <div className="relative h-80 overflow-hidden rounded-[1.25rem] bg-[#0a0c14] lg:h-auto" aria-hidden>
+              {/* Observed is the biggest number, attributed a slice of it, incremental the smallest claim */}
+              <CubeTowers towers={[[5, "white"], [3, "blue"], [1, "dark"]]} size={30} className="absolute inset-x-0 bottom-14 top-0" />
+              <div className="absolute inset-x-0 bottom-0 flex justify-center gap-4 border-t border-white/10 py-4 text-[12px] text-white/70">
+                {([["Observed", "bg-white"], ["Attributed", "bg-brand-solid"], ["Incremental", "bg-[#3a3f52]"]] as const).map(([t, c]) => <span key={t} className="flex items-center gap-1.5"><span className={`size-2.5 rounded-sm ${c}`} />{t}</span>)}
               </div>
             </div>
             <div>
@@ -361,6 +417,7 @@ export function Engine() {
 }
 
 /* ---------- every feature, compact ---------- */
+const FEATURE_SCENES: SceneKind[] = ["spin", "stack", "split", "tumble", "orbit"];
 export function Features() {
   const items: [typeof Sparkles, string, string][] = [
     [Sparkles, "AI campaign studio", "Describe a goal, get an editable draft with trigger, audience, copy and an explanation of why."],
@@ -386,7 +443,13 @@ export function Features() {
         <div className="mt-14 grid gap-px overflow-hidden rounded-[1.25rem] bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
           {items.map(([Icon, t, d], i) => (
             <div key={t} className="spot group bg-[#0b0d14] p-6 transition-colors duration-300 hover:bg-brand-solid">
-              <div className="flex items-center justify-between"><Icon className="size-5 text-brand transition-colors group-hover:text-white" aria-hidden /><span className="num text-xs text-white/30 group-hover:text-white/60">{String(i + 1).padStart(2, "0")}</span></div>
+              <div className="flex items-center justify-between">
+                <span className="relative grid size-14 place-items-center overflow-hidden rounded-xl bg-brand-soft ring-1 ring-white/10 transition-colors group-hover:bg-white/15">
+                  <BlockScene kind={FEATURE_SCENES[i % FEATURE_SCENES.length]!} tone={i % 2 ? "white" : "blue"} size={16} paused className="absolute inset-0" />
+                  <Icon className="absolute bottom-1 right-1 size-3.5 text-brand transition-colors group-hover:text-white" aria-hidden />
+                </span>
+                <span className="num text-xs text-white/30 group-hover:text-white/60">{String(i + 1).padStart(2, "0")}</span>
+              </div>
               <h3 className="mt-6 font-display text-[15px] font-bold uppercase">{t}</h3>
               <p className="mt-2 text-[14px] leading-relaxed text-white/50 group-hover:text-white/85">{d}</p>
             </div>
