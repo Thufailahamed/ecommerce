@@ -38,7 +38,7 @@ test.describe.serial("merchant to shopper, end to end", () => {
   test("marketing site renders", async () => {
     await merchant.goto("/");
     await expect(merchant.getByRole("heading", { level: 1 })).toContainText("Say the goal");
-    await expect(merchant.getByRole("link", { name: "Create a workspace" })).toBeVisible();
+    await expect(merchant.getByRole("link", { name: "Create a free workspace", exact: true })).toBeVisible();
   });
 
   test("marketing: interactive demo renders each format with the real renderer", async () => {
@@ -118,7 +118,9 @@ test.describe.serial("merchant to shopper, end to end", () => {
     await merchant.getByLabel("Trigger").selectOption("immediate");
     await openTab(merchant, "Targeting");
     await merchant.getByLabel("Add rule").selectOption("page_type");
-    await merchant.getByLabel("Page type").selectOption("home");
+    const pages = merchant.getByRole("group", { name: "Page type" });
+    await pages.getByRole("button", { name: "Product" }).click(); // start from the rule's default
+    await pages.getByRole("button", { name: "Home" }).click();
     await expect(merchant.getByText("Page type is home")).toBeVisible();
 
     await merchant.getByRole("button", { name: "Launch" }).click();

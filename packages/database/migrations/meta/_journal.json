@@ -50,6 +50,13 @@
       "when": 1793128238265,
       "tag": "0006_analytics_by_tool",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793198191746,
+      "tag": "0007_campaign_groups_and_templates",
+      "breakpoints": true
     }
   ]
 }

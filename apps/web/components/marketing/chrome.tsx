@@ -56,7 +56,7 @@ export function SiteFooter() {
           ))}
         </div>
       </div>
-      <div className="wrap flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-6 text-xs text-white/45">
+      <div className="wrap flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-6 text-xs text-white/55">
         <span>© {new Date().getFullYear()} {BRAND_FULL}</span>
         <span>All trademarks belong to their owners; no affiliation with the platforms named here is implied.</span>
         <span className="num">Prices in USD</span>

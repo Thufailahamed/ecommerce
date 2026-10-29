@@ -3,6 +3,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { api, ApiError } from "@/lib/api";
 import { int, isoDay, pct, useApi } from "@/lib/use-api";
 import { BRAND, BRAND_FULL } from "@/lib/brand";
+import { fromLocalDateTimeInput, toLocalDateTimeInput } from "@/lib/local-datetime";
 
 const respond = (status: number, body: unknown) => vi.stubGlobal("fetch", vi.fn(async () => new Response(body === undefined ? null : JSON.stringify(body), { status })));
 
@@ -70,5 +71,13 @@ describe("formatters and brand", () => {
   });
   it("brand is a single configurable constant", () => {
     expect(BRAND_FULL).toBe(`${BRAND.name} ${BRAND.suffix}`.trim());
+  });
+
+  it("round-trips campaign schedule times through the local datetime input", () => {
+    const iso = "2026-10-28T10:00:00.000Z";
+    expect(fromLocalDateTimeInput(toLocalDateTimeInput(iso))).toBe(iso);
+    expect(toLocalDateTimeInput(undefined)).toBe("");
+    expect(fromLocalDateTimeInput("")).toBeUndefined();
+    expect(fromLocalDateTimeInput("not-a-date")).toBeUndefined();
   });
 });

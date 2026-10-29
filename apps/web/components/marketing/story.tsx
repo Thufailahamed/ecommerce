@@ -128,7 +128,7 @@ export function ScrollStory() {
             {CHAPTERS.map((c, i) => (
               <li key={c.id}>
                 <button onClick={() => go(i)} aria-current={chapter === i ? "step" : undefined}
-                  className={`rounded-full px-3 py-2 text-[13px] font-medium transition-colors md:px-4 ${chapter === i ? "bg-brand-solid text-white" : "text-white/45 hover:text-white"}`}>{c.label}</button>
+                  className={`rounded-full px-3 py-2 text-[13px] font-medium transition-colors md:px-4 ${chapter === i ? "bg-brand-solid text-white" : "text-white/55 hover:text-white"}`}>{c.label}</button>
               </li>
             ))}
           </ol>
@@ -145,7 +145,7 @@ function Browser({ children }: { children: ReactNode }) {
     <div>
       <div className="flex items-center gap-1.5 bg-[#eceef3] px-3 py-[0.6%]">
         <span className="size-2 rounded-full bg-[#ff5f57]" /><span className="size-2 rounded-full bg-[#febc2e]" /><span className="size-2 rounded-full bg-[#28c840]" />
-        <span className="num mx-auto truncate rounded-md bg-white px-3 py-0.5 text-[10px] text-black/50">northpeak.store/collections/trail</span>
+        <span className="num mx-auto truncate rounded-md bg-white px-3 py-0.5 text-[10px] text-black/60">northpeak.store/collections/trail</span>
       </div>
       {children}
     </div>

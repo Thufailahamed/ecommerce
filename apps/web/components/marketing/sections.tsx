@@ -197,7 +197,7 @@ export function FlowsSection() {
 
 /* ---------- pillars: a row of capability cards that stack up from the right as you scroll ---------- */
 const CARD_TITLE = "font-display text-[28px] font-bold uppercase leading-8";
-const CARD_TEXT = "text-[14px] font-semibold leading-5 text-black/40";
+const CARD_TEXT = "text-[14px] font-semibold leading-5 text-black/60";
 /** Product mock pinned to the bottom of a card, sized down with the card. */
 const CARD_MOCK = "mt-auto w-full max-w-[420px] self-end overflow-hidden rounded-[20px] min-[1441px]:max-w-[682px] max-md:max-w-[262px] max-md:self-start max-md:rounded-xl";
 
@@ -282,7 +282,7 @@ export function Pillars() {
                   <BlockScene kind={scene} tone="blue" size={14} paused={scene === "tumble"} className="absolute right-3 top-3 size-10 rounded-lg bg-white" />
                   <span className="pr-12 font-display text-[28px] font-bold uppercase leading-8 max-[1441px]:text-[19px] max-[1441px]:leading-6">{v}</span>
                   <Rule />
-                  <p className="text-[14px] leading-5 text-black/40">{l}</p>
+                  <p className="text-[14px] leading-5 text-black/60">{l}</p>
                 </div>
               ))}
             </div>

@@ -22,9 +22,16 @@ test.describe("password reset", () => {
     const ctx = await browser.newContext(); const page = await ctx.newPage(); watch(page);
     await page.goto("/login");
     await page.getByRole("link", { name: "Forgot your password?" }).click();
-    await page.getByLabel("Email").fill(m.email);
-    await page.getByRole("button", { name: "Send reset link" }).click();
-    await expect(page.getByText(/we've sent a link/)).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    // Retry the fill + click if client-side navigation has not hydrated yet: a pre-hydration fill can be reset,
+    // and the native `required` check then blocks the submit without sending a request.
+    await expect(async () => {
+      await page.getByLabel("Email").fill(m.email);
+      const resetRequest = page.waitForResponse((r) => r.url().includes("/api/v1/auth/forgot-password"), { timeout: 5_000 });
+      await page.getByRole("button", { name: "Send reset link" }).click();
+      expect((await resetRequest).status()).toBe(202);
+    }).toPass({ timeout: 30_000 });
+    await expect(page.getByText(/we've sent a link/)).toBeVisible({ timeout: 15_000 });
 
     const mail = await waitForMail(m.email, /Reset your password/);
     const link = firstUrl(mail);
@@ -144,7 +151,9 @@ test.describe("team", () => {
 
     // promote, then remove
     await owner.page.reload();
+    const roleSaved = owner.page.waitForResponse((r) => r.url().includes("/members/") && r.request().method() === "PATCH" && r.ok());
     await owner.page.getByLabel(`Role for ${mate}`).selectOption("editor");
+    await roleSaved;
     await owner.page.reload();
     await expect(owner.page.getByLabel(`Role for ${mate}`)).toHaveValue("editor"); // persisted server-side
     owner.page.once("dialog", (d) => void d.accept());

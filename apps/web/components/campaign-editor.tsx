@@ -10,6 +10,7 @@ import { api, ApiError, type CampaignRow, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { TOOLS } from "@/lib/tools";
 import { defaultConfig, type EditorTool } from "@/lib/campaign-defaults";
+import { fromLocalDateTimeInput, toLocalDateTimeInput } from "@/lib/local-datetime";
 import { Badge, Button, ErrorNote, Field, Input, Select, Textarea, statusTone } from "./ui";
 import { CampaignPreview, type Device } from "./campaign-preview";
 import { VersionHistory } from "./version-history";
@@ -41,30 +42,126 @@ const REC_PLACEMENTS: { id: RecOptions["placement"]; label: string; hint: string
   { id: "toast", label: "As a toast", hint: "A small card in the corner, shown as a list, when its trigger fires." },
 ];
 
+const PAGE_TYPE_OPTIONS = [
+  { value: "home", label: "Home" }, { value: "collection", label: "Collection" }, { value: "product", label: "Product" },
+  { value: "cart", label: "Cart" }, { value: "checkout", label: "Checkout" }, { value: "search", label: "Search" },
+  { value: "content", label: "Content" }, { value: "other", label: "Other" },
+] as const;
+const DEVICE_OPTIONS = [{ value: "mobile", label: "Mobile" }, { value: "tablet", label: "Tablet" }, { value: "desktop", label: "Desktop" }] as const;
+
 const RULE_FIELDS: { id: string; label: string; make: () => Condition }[] = [
   { id: "page_type", label: "Page type", make: () => ({ field: "page_type", op: "in", value: ["product"] }) },
   { id: "device", label: "Device", make: () => ({ field: "device", op: "in", value: ["mobile"] }) },
   { id: "cart_subtotal", label: "Cart subtotal", make: () => ({ field: "cart_subtotal", op: "gte", value: 50 }) },
+  { id: "cart_item_count", label: "Cart items", make: () => ({ field: "cart_item_count", op: "gte", value: 1 }) },
+  { id: "product_id", label: "Product", make: () => ({ field: "product_id", op: "in", value: [] }) },
+  { id: "collection_id", label: "Collection", make: () => ({ field: "collection_id", op: "in", value: [] }) },
   { id: "visitor_type", label: "Visitor type", make: () => ({ field: "visitor_type", op: "equals", value: "new" }) },
   { id: "url_path", label: "URL path", make: () => ({ field: "url_path", op: "starts_with", value: "/collections/" }) },
   { id: "pages_viewed", label: "Pages viewed", make: () => ({ field: "pages_viewed", op: "gte", value: 3 }) },
+  { id: "product_available", label: "Product availability", make: () => ({ field: "product_available", op: "equals", value: false }) },
 ];
 
-function ConditionRow({ c, onChange, onRemove }: { c: Condition; onChange(c: Condition): void; onRemove(): void }) {
-  const pageTypes = ["home", "collection", "product", "cart", "checkout", "search", "content"] as const;
+interface ProductOption { id: string; title: string }
+
+/** A small multi-select that works with the contract's arrays (page type and device allow more than one value). */
+function ChoiceChips({ label, options, values, onChange }: { label: string; options: readonly { value: string; label: string }[]; values: string[]; onChange(values: string[]): void }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line py-2 text-sm">
-      <span className="w-28 font-medium">{RULE_FIELDS.find((f) => f.id === c.field)?.label ?? c.field}</span>
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const on = values.includes(o.value);
+        return (
+          <button key={o.value} type="button" aria-pressed={on}
+            onClick={() => onChange(on ? values.filter((v) => v !== o.value) : [...values, o.value])}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${on ? "bg-brand-solid text-white ring-brand-tint" : "bg-white/[0.03] text-ink-2 ring-line hover:text-ink"}`}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Comma-separated ids, kept as text while typing so a trailing comma is not swallowed. */
+function CsvListInput({ label, values, onChange, hint }: { label: string; values: string[]; onChange(values: string[]): void; hint?: string }) {
+  const joined = values.join(", ");
+  const [text, setText] = useState(joined);
+  useEffect(() => { setText(joined); }, [joined]);
+  return (
+    <div className="min-w-0 flex-1">
+      <Input aria-label={label} value={text} placeholder="id-1, id-2" onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        onChange(next.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 50));
+      }} onBlur={() => setText(joined)} />
+      {hint && <p className="mt-1 text-xs text-ink-3">{hint}</p>}
+    </div>
+  );
+}
+
+function ProductCondition({ c, products, onChange }: { c: Extract<Condition, { field: "product_id" }>; products: ProductOption[]; onChange(c: Condition): void }) {
+  const selected = c.value;
+  const available = products.filter((p) => !selected.includes(p.id));
+  return (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      {selected.map((id) => {
+        const title = products.find((p) => p.id === id)?.title ?? id;
+        return (
+          <span key={id} className="inline-flex max-w-[13rem] items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-ink-2 ring-1 ring-line">
+            <span className="truncate" title={title}>{title}</span>
+            <button type="button" aria-label={`Remove product ${title}`} className="text-ink-3 hover:text-danger" onClick={() => onChange({ ...c, value: selected.filter((x) => x !== id) })}><X className="size-3" /></button>
+          </span>
+        );
+      })}
+      {products.length > 0 ? (
+        <Select aria-label="Add product" className="w-48" value="" onChange={(e) => {
+          const id = e.target.value;
+          if (id && !selected.includes(id)) onChange({ ...c, value: [...selected, id] });
+        }}>
+          <option value="">+ Add a product…</option>
+          {available.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </Select>
+      ) : (
+        <CsvListInput label="Product ids" values={selected} hint="Import products in Settings to pick them by name, or paste catalog ids here." onChange={(value) => onChange({ ...c, value })} />
+      )}
+    </div>
+  );
+}
+
+function ConditionRow({ c, products = [], onChange, onRemove }: { c: Condition; products?: ProductOption[]; onChange(c: Condition): void; onRemove(): void }) {
+  return (
+    <div className="flex flex-wrap items-start gap-2 border-b border-line py-2 text-sm">
+      <span className="w-28 shrink-0 pt-2 font-medium">{RULE_FIELDS.find((f) => f.id === c.field)?.label ?? c.field}</span>
       {c.field === "page_type" && (<>
         <Select aria-label="Operator" className="w-24" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "in" | "not_in" })}><option value="in">is</option><option value="not_in">is not</option></Select>
-        <Select aria-label="Page type" className="w-36" value={c.value[0]} onChange={(e) => onChange({ ...c, value: [e.target.value as (typeof pageTypes)[number]] })}>{pageTypes.map((p) => <option key={p}>{p}</option>)}</Select>
+        <ChoiceChips label="Page type" options={PAGE_TYPE_OPTIONS} values={c.value} onChange={(value) => onChange({ ...c, value: value as typeof c.value })} />
       </>)}
-      {c.field === "device" && (
-        <Select aria-label="Device" className="w-36" value={c.value[0]} onChange={(e) => onChange({ ...c, value: [e.target.value as "mobile" | "tablet" | "desktop"] })}><option>mobile</option><option>tablet</option><option>desktop</option></Select>
-      )}
+      {c.field === "device" && (<>
+        <Select aria-label="Operator" className="w-24" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "in" | "not_in" })}><option value="in">is</option><option value="not_in">is not</option></Select>
+        <ChoiceChips label="Device" options={DEVICE_OPTIONS} values={c.value} onChange={(value) => onChange({ ...c, value: value as typeof c.value })} />
+      </>)}
       {c.field === "cart_subtotal" && (<>
+        <Select aria-label="Operator" className="w-28" value={c.op} onChange={(e) => {
+          const op = e.target.value as "gte" | "lte" | "between";
+          onChange(op === "between" ? { ...c, op, valueTo: c.valueTo ?? c.value } : { field: "cart_subtotal", op, value: c.value });
+        }}><option value="gte">at least</option><option value="lte">at most</option><option value="between">between</option></Select>
+        <Input aria-label="Amount" type="number" min={0} className="w-28" value={c.value} onChange={(e) => { const value = Math.max(0, Number(e.target.value)); onChange({ ...c, value, ...(c.op === "between" && c.valueTo === undefined ? { valueTo: value } : {}) }); }} />
+        {c.op === "between" && <>
+          <span className="pt-2 text-ink-3">and</span>
+          <Input aria-label="Upper amount" type="number" min={0} className="w-28" value={c.valueTo ?? ""} onChange={(e) => onChange({ ...c, valueTo: Math.max(0, Number(e.target.value)) })} />
+        </>}
+      </>)}
+      {c.field === "cart_item_count" && (<>
         <Select aria-label="Operator" className="w-28" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "gte" | "lte" })}><option value="gte">at least</option><option value="lte">at most</option></Select>
-        <Input aria-label="Amount" type="number" min={0} className="w-28" value={c.value} onChange={(e) => onChange({ ...c, value: Math.max(0, Number(e.target.value)) })} />
+        <Input aria-label="Items" type="number" min={0} className="w-24" value={c.value} onChange={(e) => onChange({ ...c, value: Math.max(0, Math.floor(Number(e.target.value))) })} />
+      </>)}
+      {c.field === "product_id" && (<>
+        <Select aria-label="Operator" className="w-24" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "in" | "not_in" })}><option value="in">is</option><option value="not_in">is not</option></Select>
+        <ProductCondition c={c} products={products} onChange={onChange} />
+      </>)}
+      {c.field === "collection_id" && (<>
+        <Select aria-label="Operator" className="w-24" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "in" | "not_in" })}><option value="in">is</option><option value="not_in">is not</option></Select>
+        <CsvListInput label="Collection ids" values={c.value} hint="Catalog collection ids, separated by commas." onChange={(value) => onChange({ ...c, value })} />
       </>)}
       {c.field === "visitor_type" && (
         <Select aria-label="Visitor" className="w-36" value={c.value} onChange={(e) => onChange({ ...c, value: e.target.value as "new" | "returning" })}><option>new</option><option>returning</option></Select>
@@ -73,8 +170,11 @@ function ConditionRow({ c, onChange, onRemove }: { c: Condition; onChange(c: Con
         <Select aria-label="Operator" className="w-32" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as "equals" | "starts_with" | "contains" })}><option value="equals">equals</option><option value="starts_with">starts with</option><option value="contains">contains</option></Select>
         <Input aria-label="Path" className="w-48" value={c.value} onChange={(e) => onChange({ ...c, value: e.target.value })} />
       </>)}
-      {c.field === "pages_viewed" && (<><span className="text-ink-2">at least</span><Input aria-label="Pages" type="number" min={1} className="w-20" value={c.value} onChange={(e) => onChange({ ...c, value: Math.max(1, Number(e.target.value)) })} /></>)}
-      <button type="button" aria-label="Remove rule" className="ml-auto text-ink-3 hover:text-danger" onClick={onRemove}><Trash2 className="size-4" /></button>
+      {c.field === "pages_viewed" && (<><span className="pt-2 text-ink-2">at least</span><Input aria-label="Pages" type="number" min={1} className="w-20" value={c.value} onChange={(e) => onChange({ ...c, value: Math.max(1, Number(e.target.value)) })} /></>)}
+      {c.field === "product_available" && (
+        <Select aria-label="Product availability" className="w-40" value={c.value ? "true" : "false"} onChange={(e) => onChange({ ...c, value: e.target.value === "true" })}><option value="true">In stock</option><option value="false">Out of stock</option></Select>
+      )}
+      <button type="button" aria-label="Remove rule" className="ml-auto pt-2 text-ink-3 hover:text-danger" onClick={onRemove}><Trash2 className="size-4" /></button>
     </div>
   );
 }
@@ -170,6 +270,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
   const base = `/api/v1/stores/${store.id}/campaigns`;
   const catalog = useApi<{ id: string; externalId: string; title: string; url: string | null; handle: string | null; imageUrl: string | null }[]>(`/api/v1/stores/${store.id}/products`);
   const guard = useApi<{ maxDiscountPercent: number | null }>(`/api/v1/stores/${store.id}/integration`);
+  const productOptions = useMemo(() => (catalog.data ?? []).map((p) => ({ id: p.externalId, title: p.title })), [catalog.data]);
   const patch = (fn: (c: Cfg) => Cfg) => { setCfg(fn); setDirty(true); setApproved(false); };
   const summary = useMemo(() => describeRuleGroup(cfg.targeting), [cfg.targeting]);
   const check = CampaignConfig.safeParse(cfg);
@@ -486,7 +587,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           </div>
           <div>
             {cfg.targeting.conditions.map((cond, i) => (
-              <ConditionRow key={i} c={cond}
+              <ConditionRow key={i} c={cond} products={productOptions}
                 onChange={(n) => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.map((x, j) => (j === i ? n : x)) } }))}
                 onRemove={() => patch((c) => ({ ...c, targeting: { ...c.targeting, conditions: c.targeting.conditions.filter((_, j) => j !== i) } }))} />
             ))}
@@ -513,11 +614,20 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
         <Section title="Limits and goal">
           <div className="grid grid-cols-2 gap-3">
             {!isFeed && !passiveUpsell && !passiveForm && <Field label="Max per session"><Input type="number" min={1} max={20} value={cfg.frequency.maxImpressionsPerSession} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, maxImpressionsPerSession: Math.max(1, Number(e.target.value)) } }))} /></Field>}
-            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Hide after dismiss (days)"><Input type="number" min={0} value={cfg.frequency.suppressAfterDismissDays} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, suppressAfterDismissDays: Math.max(0, Number(e.target.value)) } }))} /></Field>}
+            {!isFeed && !passiveUpsell && !passiveForm && (
+              <Field label="Max per visitor (optional)" hint="Across visits. The SDK only remembers this when the shopper consents to analytics.">
+                <Input type="number" min={1} max={100} value={cfg.frequency.maxImpressionsPerVisitor ?? ""} onChange={(e) => {
+                  const raw = e.target.value, n = Number(raw);
+                  patch((c) => { const { maxImpressionsPerVisitor: _v, ...f } = c.frequency; return { ...c, frequency: raw && Number.isFinite(n) && n >= 1 ? { ...f, maxImpressionsPerVisitor: Math.min(100, Math.floor(n)) } : f }; });
+                }} />
+              </Field>
+            )}
+            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Hide after dismiss (days)"><Input type="number" min={0} max={365} value={cfg.frequency.suppressAfterDismissDays} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, suppressAfterDismissDays: Math.min(365, Math.max(0, Number(e.target.value))) } }))} /></Field>}
+            {!isFeed && !passiveUpsell && !passiveForm && <Field label="Hide after click (days)" hint="0 turns this off."><Input type="number" min={0} max={365} value={cfg.frequency.suppressAfterClickDays} onChange={(e) => patch((c) => ({ ...c, frequency: { ...c.frequency, suppressAfterClickDays: Math.min(365, Math.max(0, Number(e.target.value))) } }))} /></Field>}
             <Field label="Priority (0–100)" hint="Higher wins conflicts"><Input type="number" min={0} max={100} value={cfg.priority} onChange={(e) => patch((c) => ({ ...c, priority: Math.min(100, Math.max(0, Number(e.target.value))) }))} /></Field>
             {!isFeed && <Field label="Goal"><Select value={cfg.goal.type} onChange={(e) => patch((c) => ({ ...c, goal: { ...c.goal, type: e.target.value as Cfg["goal"]["type"] } }))}><option value="clicks">Clicks</option><option value="add_to_cart">Add to cart</option><option value="purchase">Purchase</option><option value="subscribe">Subscribe</option></Select></Field>}
-            <Field label="Starts"><Input type="datetime-local" value={cfg.schedule.startsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { startsAt: _s, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, startsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
-            <Field label="Ends"><Input type="datetime-local" value={cfg.schedule.endsAt?.slice(0, 16) ?? ""} onChange={(e) => patch((c) => { const { endsAt: _e, ...rest } = c.schedule; return { ...c, schedule: e.target.value ? { ...rest, endsAt: new Date(e.target.value).toISOString() } : rest }; })} /></Field>
+            <Field label="Starts" hint="Your local time"><Input type="datetime-local" value={toLocalDateTimeInput(cfg.schedule.startsAt)} onChange={(e) => patch((c) => { const { startsAt: _s, ...rest } = c.schedule; const startsAt = fromLocalDateTimeInput(e.target.value); return { ...c, schedule: startsAt ? { ...rest, startsAt } : rest }; })} /></Field>
+            <Field label="Ends" hint="Your local time"><Input type="datetime-local" value={toLocalDateTimeInput(cfg.schedule.endsAt)} onChange={(e) => patch((c) => { const { endsAt: _e, ...rest } = c.schedule; const endsAt = fromLocalDateTimeInput(e.target.value); return { ...c, schedule: endsAt ? { ...rest, endsAt } : rest }; })} /></Field>
           </div>
         </Section>
         </>)}

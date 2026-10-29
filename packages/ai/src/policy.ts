@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CampaignConfig, ConsentText, SHIPPED_TOOLS, SafeUrl, Tool, toolOf } from "@convertflow/contracts";
+import { CampaignConfig, ConsentText, SHIPPED_TOOLS, SafeUrl, Tool, toolOf, type Condition } from "@convertflow/contracts";
 
 export interface CatalogItem {
   id: string;
@@ -11,6 +11,8 @@ export interface CatalogItem {
 
 export interface CampaignGenerationInput {
   objective: string;
+  /** The draft being refined, when the merchant is iterating on an existing draft. Treated as data, never instructions. */
+  previousConfig?: CampaignConfig;
   /** The tool to build. Omit to let the model choose (it still may not pick a tool that is not available). */
   tool?: Tool;
   /** Legacy and signup-form format hint. Toast, feed and upsell have exactly one format each. */
@@ -109,6 +111,50 @@ function repairForm(cfg: Record<string, unknown>, tool: "email" | "sms", input: 
   return form;
 }
 
+/** Expand shorthand and coerce common operator mistakes into the contract's exact condition shapes. */
+function normalizeCondition(raw: unknown): Condition | undefined {
+  if (!isRecord(raw)) return undefined;
+  const oneOrMany = (v: unknown): string[] | undefined =>
+    typeof v === "string" ? [v] : Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? v : undefined;
+  const value = raw["value"];
+  if (typeof raw["field"] === "string") {
+    const field = raw["field"];
+    const op = typeof raw["op"] === "string" ? raw["op"] : undefined;
+    if (field === "visitor_type") {
+      const v = Array.isArray(value) && value.length === 1 ? value[0] : value;
+      if (v === "new" || v === "returning") return { field, op: "equals", value: v };
+    }
+    if (field === "product_available" && typeof value === "boolean") return { field, op: "equals", value };
+    if ((field === "pages_viewed" || field === "cart_item_count" || field === "cart_subtotal") && typeof value === "number") {
+      const safeOp = field === "cart_subtotal" ? (op === "lte" || op === "between" ? op : "gte") : (op === "lte" ? "lte" : "gte");
+      return { field, op: safeOp, value, ...(field === "cart_subtotal" && safeOp === "between" && typeof raw["valueTo"] === "number" ? { valueTo: raw["valueTo"] } : {}) } as Condition;
+    }
+    if (field === "url_path" && typeof value === "string") return { field, op: op === "equals" || op === "contains" ? op : "starts_with", value };
+    if (field === "page_type" || field === "device") {
+      const values = oneOrMany(value);
+      if (values) return { field, op: op === "not_in" ? "not_in" : "in", value: values } as Condition;
+    }
+    if (field === "product_id" || field === "collection_id") {
+      const values = oneOrMany(value);
+      if (values) return { field, op: op === "not_in" ? "not_in" : "in", value: values };
+    }
+    return undefined;
+  }
+  const keys = Object.keys(raw);
+  if (keys.length !== 1) return undefined;
+  const key = keys[0]!;
+  const simple = raw[key];
+  if (key === "page_type" || key === "device" || key === "product_id" || key === "collection_id") {
+    const values = oneOrMany(simple);
+    if (values) return { field: key, op: "in", value: values } as Condition;
+  }
+  if (key === "visitor_type" && (simple === "new" || simple === "returning")) return { field: key, op: "equals", value: simple };
+  if (key === "product_available" && typeof simple === "boolean") return { field: key, op: "equals", value: simple };
+  if ((key === "pages_viewed" || key === "cart_item_count" || key === "cart_subtotal") && typeof simple === "number") return { field: key, op: "gte", value: simple } as Condition;
+  if (key === "url_path" && typeof simple === "string") return { field: key, op: "starts_with", value: simple };
+  return undefined;
+}
+
 function repairRaw(rawCfg: unknown, input: CampaignGenerationInput, repairs: string[]): unknown {
   if (!isRecord(rawCfg)) return rawCfg;
   const cfg: Record<string, unknown> = { ...rawCfg };
@@ -117,6 +163,29 @@ function repairRaw(rawCfg: unknown, input: CampaignGenerationInput, repairs: str
   const single = tool ? SINGLE_FORMAT[tool] : undefined;
   if (single && cfg["format"] !== single) { cfg["format"] = single; repairs.push(`The format was set to ${single}, the only one the ${tool} tool uses.`); }
   if ((tool === "email" || tool === "sms") && cfg["format"] !== "restock") cfg["form"] = repairForm(cfg, tool, input, repairs);
+  const targeting = cfg["targeting"];
+  if (isRecord(targeting) && Array.isArray(targeting["conditions"])) {
+    let changed = false;
+    const conditions = targeting["conditions"].map((raw) => {
+      const normalized = normalizeCondition(raw);
+      if (normalized && JSON.stringify(normalized) !== JSON.stringify(raw)) { changed = true; return normalized; }
+      return raw;
+    });
+    if (changed) {
+      cfg["targeting"] = { ...targeting, conditions };
+      repairs.push("Targeting rules were expanded into the required field/op/value shape.");
+    }
+  }
+  const frequency = cfg["frequency"];
+  if (isRecord(frequency)) {
+    const aliases: Array<[string, string]> = [["impressionsPerSession", "maxImpressionsPerSession"], ["impressionsPerVisitor", "maxImpressionsPerVisitor"], ["dismissAfterDays", "suppressAfterDismissDays"], ["clickCooldownDays", "suppressAfterClickDays"]];
+    let changed = false;
+    const next = { ...frequency };
+    for (const [from, to] of aliases) {
+      if (next[from] !== undefined && next[to] === undefined) { next[to] = next[from]; delete next[from]; changed = true; }
+    }
+    if (changed) { cfg["frequency"] = next; repairs.push("Frequency setting names were corrected."); }
+  }
   if (typeof cfg["priority"] === "number" && cfg["priority"] > MAX_AI_PRIORITY) {
     cfg["priority"] = MAX_AI_PRIORITY;
     repairs.push(`Priority was lowered to ${MAX_AI_PRIORITY} so this draft cannot outrank your existing campaigns.`);
@@ -138,7 +207,12 @@ function textFields(c: CampaignConfig): Array<[string, string]> {
  */
 export function validateProposal(raw: unknown, input: CampaignGenerationInput, opts: PolicyOptions = {}): CampaignProposal {
   const allowed = opts.allowedTools ?? SHIPPED_TOOLS;
-  const outer = RawProposal.safeParse(raw);
+  // Small models sometimes return the campaign object directly instead of wrapping it in {config, explanation}. Both are
+  // deterministic and safe to accept; the explanation is not used for policy decisions.
+  const candidate = isRecord(raw) && !("config" in raw) && ("schemaVersion" in raw || "creative" in raw)
+    ? { config: raw, explanation: "A campaign draft generated from your goal." }
+    : raw;
+  const outer = RawProposal.safeParse(candidate);
   if (!outer.success) throw new AIValidationError("Model returned malformed output", ["response shape invalid"]);
 
   if (input.privacyUrl !== undefined && !SafeUrl.safeParse(input.privacyUrl.trim()).success) throw new AIValidationError("Invalid privacy URL", ["The privacy policy URL must be https or a relative path"]);

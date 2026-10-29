@@ -9,7 +9,7 @@ wrangler kv namespace create CONFIG_KV
 wrangler queues create convertflow-events-<env>
 wrangler queues create convertflow-events-dlq-<env>
 ```
-Put the ids in `apps/api/wrangler.jsonc` (staging/production under `env`). Create an AI Gateway and set `AI_GATEWAY_ID`. Create a Resend account, verify a sending domain (SPF + DKIM), and an API key.
+Put the ids in `apps/api/wrangler.jsonc` (staging/production under `env`). AI Gateway uses the auto-created `default` gateway; change `AI_GATEWAY_ID` in `apps/api/wrangler.jsonc` if you want a named gateway. Keep the default Workers AI model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` unless you have measured a better/cheaper one for your traffic. Create a Resend account, verify a sending domain (SPF + DKIM), and an API key.
 
 ## 2. Secrets (`wrangler secret put <NAME> --env <env>`) and vars
 | Name | Needed for | If missing |

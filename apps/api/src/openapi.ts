@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CampaignConfig, EventBatch, PLANS } from "@convertflow/contracts";
+import { CampaignConfig, CampaignGroupInput, CampaignTemplateInput, EventBatch, GroupMembersInput, PLANS } from "@convertflow/contracts";
 import { CatalogProductInput } from "./services/catalog.js";
 
 type Auth = "none" | "session" | "signature";
@@ -59,7 +59,7 @@ const ROUTES: R[] = [
   { m: "get", p: "/api/v1/stores/:storeId/campaigns/:id", s: "Get a campaign", auth: "session", role: "viewer" },
   { m: "put", p: "/api/v1/stores/:storeId/campaigns/:id", s: "Update the draft", auth: "session", role: "editor", body: CampaignConfig },
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/validate", s: "Validate a config; returns issues and warnings", auth: "session", role: "viewer", body: CampaignConfig },
-  { m: "post", p: "/api/v1/stores/:storeId/campaigns/ai-generate", s: "Generate a draft with AI (metered, never published)", auth: "session", role: "editor", note: "Body: objective, optional tool (auto|toast|feed|upsell|sms|email; a tool that is not shipped answers 409 tool_unavailable), freeShippingThreshold, consentText, privacyUrl, allowedPromotion. The AI never writes consent text or invents promotions, urgency, social proof or shipping claims; the response lists repairs and warnings." },
+  { m: "post", p: "/api/v1/stores/:storeId/campaigns/ai-generate", s: "Generate a draft with AI, or refine a saved draft (metered, never published)", auth: "session", role: "editor", note: "Body: objective, optional campaignId (refines that draft in place; only drafts are accepted), tool (auto|toast|feed|upsell|sms|email; a tool that is not shipped answers 409 tool_unavailable), feedback, freeShippingThreshold, consentText, privacyUrl, allowedPromotion. The AI never writes consent text or invents promotions, urgency, social proof or shipping claims; the response lists repairs and warnings." },
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/:id/publish", s: "Publish with explicit approval ({approve:true, approvedUpdatedAt}); 409 if the draft changed", auth: "session", role: "admin", note: "Checks plan entitlements, email verification and the promotion guardrail." },
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/:id/pause", s: "Pause a live campaign", auth: "session", role: "editor" },
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/:id/resume", s: "Resume a paused campaign", auth: "session", role: "admin" },
@@ -67,6 +67,17 @@ const ROUTES: R[] = [
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/:id/duplicate", s: "Duplicate into a new draft", auth: "session", role: "editor" },
   { m: "post", p: "/api/v1/stores/:storeId/campaigns/:id/rollback", s: "Republish an earlier version as a new one", auth: "session", role: "admin" },
   { m: "get", p: "/api/v1/stores/:storeId/campaigns/:id/versions", s: "Immutable version history", auth: "session", role: "viewer" },
+
+  { m: "get", p: "/api/v1/stores/:storeId/campaign-groups", s: "Groups (merchant folders) with their campaign ids", auth: "session", role: "viewer" },
+  { m: "post", p: "/api/v1/stores/:storeId/campaign-groups", s: "Create a group (max 50 per store; names unique per store)", auth: "session", role: "editor", body: CampaignGroupInput },
+  { m: "patch", p: "/api/v1/stores/:storeId/campaign-groups/:groupId", s: "Rename a group", auth: "session", role: "editor", body: CampaignGroupInput },
+  { m: "delete", p: "/api/v1/stores/:storeId/campaign-groups/:groupId", s: "Delete a group. Its campaigns are kept.", auth: "session", role: "editor" },
+  { m: "post", p: "/api/v1/stores/:storeId/campaign-groups/:groupId/members", s: "Add campaigns to a group (body: campaignIds, all must belong to this store)", auth: "session", role: "editor", body: GroupMembersInput },
+  { m: "delete", p: "/api/v1/stores/:storeId/campaign-groups/:groupId/members/:campaignId", s: "Remove a campaign from a group. Idempotent.", auth: "session", role: "editor" },
+  { m: "get", p: "/api/v1/stores/:storeId/campaign-templates", s: "Saved templates (config is fetched when a campaign is made from one)", auth: "session", role: "viewer" },
+  { m: "post", p: "/api/v1/stores/:storeId/campaign-templates", s: "Save a campaign's valid draft as a template (body: name, campaignId; max 50 per store)", auth: "session", role: "editor", body: CampaignTemplateInput },
+  { m: "delete", p: "/api/v1/stores/:storeId/campaign-templates/:templateId", s: "Delete a saved template", auth: "session", role: "editor" },
+  { m: "post", p: "/api/v1/stores/:storeId/campaign-templates/:templateId/campaigns", s: "Start a new draft campaign from a saved template. Nothing is published.", auth: "session", role: "editor" },
 
   { m: "get", p: "/api/v1/stores/:storeId/analytics", s: "Totals, per-campaign metrics, attributed revenue and experiment results (query: from, to)", auth: "session", role: "viewer" },
   { m: "get", p: "/api/v1/stores/:storeId/analytics/tools", s: "Per-tool rollups (toast, feed, upsell, sms, email) with a per-campaign drill-down (query: from, to; at most 366 days)", auth: "session", role: "viewer" },

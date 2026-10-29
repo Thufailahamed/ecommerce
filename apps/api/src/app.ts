@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
-import { ConsentText, EventBatch, SafeUrl, Tool } from "@convertflow/contracts";
+import { CampaignGroupInput, CampaignTemplateInput, ConsentText, EventBatch, GroupMembersInput, SafeUrl, Tool } from "@convertflow/contracts";
 import { eq } from "drizzle-orm";
 import { schema } from "@convertflow/database";
 import { HttpError, type Deps } from "./deps.js";
@@ -27,6 +27,7 @@ import { confirmSubscription, notifyRestock, subscribeRestock, unsubscribe } fro
 import * as contactSvc from "./services/contacts.js";
 import * as recs from "./services/recommendations.js";
 import * as providerSvc from "./services/providers.js";
+import * as groups from "./services/groups.js";
 
 async function verifyTurnstile(d: Deps, token: string | undefined, ip: string | undefined) {
   if (!token) throw new HttpError(400, "captcha_required", "Please complete the verification challenge");
@@ -394,6 +395,7 @@ export function createApp(d: Deps, opts: AppOptions) {
     if (!aiLimit(`ai:${c.get("user").userId}`)) throw new HttpError(429, "rate_limited", "Too many AI requests");
     const b = await body(c, z.object({
       objective: z.string().trim().min(10).max(500),
+      campaignId: z.string().min(1).max(100).optional(),
       format: z.enum(["popup", "slide_in", "announcement_bar"]).optional(),
       constraints: z.string().max(500).optional(), allowedPromotion: z.string().max(200).optional(), feedback: z.string().max(500).optional(),
       /** "auto" (or omitted) lets the model choose among the available tools. */
@@ -405,6 +407,56 @@ export function createApp(d: Deps, opts: AppOptions) {
     const { tool, ...rest } = b;
     const clean = Object.fromEntries(Object.entries({ ...rest, ...(tool && tool !== "auto" ? { tool } : {}) }).filter(([, v]) => v !== undefined)) as typeof rest & { tool?: Tool };
     return c.json({ data: await generateCampaignDraft(d, store, c.get("user").userId, clean) }, 201);
+  });
+
+  /* ---------- campaign groups and saved templates ---------- */
+
+  app.get("/api/v1/stores/:storeId/campaign-groups", async (c) => {
+    const { store } = await access(c, "viewer");
+    return c.json({ data: await groups.listGroups(d, store.id) });
+  });
+  app.post("/api/v1/stores/:storeId/campaign-groups", async (c) => {
+    const { store } = await access(c, "editor");
+    const b = await body(c, CampaignGroupInput);
+    return c.json({ data: await groups.createGroup(d, store.id, b.name) }, 201);
+  });
+  app.patch("/api/v1/stores/:storeId/campaign-groups/:groupId", async (c) => {
+    const { store } = await access(c, "editor");
+    const b = await body(c, CampaignGroupInput);
+    return c.json({ data: await groups.renameGroup(d, store.id, c.req.param("groupId"), b.name) });
+  });
+  app.delete("/api/v1/stores/:storeId/campaign-groups/:groupId", async (c) => {
+    const { store } = await access(c, "editor");
+    await groups.deleteGroup(d, store.id, c.req.param("groupId"));
+    return c.body(null, 204);
+  });
+  app.post("/api/v1/stores/:storeId/campaign-groups/:groupId/members", async (c) => {
+    const { store } = await access(c, "editor");
+    const b = await body(c, GroupMembersInput);
+    return c.json({ data: await groups.addMembers(d, store.id, c.req.param("groupId"), b.campaignIds) });
+  });
+  app.delete("/api/v1/stores/:storeId/campaign-groups/:groupId/members/:campaignId", async (c) => {
+    const { store } = await access(c, "editor");
+    await groups.removeMember(d, store.id, c.req.param("groupId"), c.req.param("campaignId"));
+    return c.body(null, 204);
+  });
+  app.get("/api/v1/stores/:storeId/campaign-templates", async (c) => {
+    const { store } = await access(c, "viewer");
+    return c.json({ data: await groups.listTemplates(d, store.id) });
+  });
+  app.post("/api/v1/stores/:storeId/campaign-templates", async (c) => {
+    const { store } = await access(c, "editor");
+    const b = await body(c, CampaignTemplateInput);
+    return c.json({ data: await groups.saveTemplate(d, store.id, c.get("user").userId, b) }, 201);
+  });
+  app.delete("/api/v1/stores/:storeId/campaign-templates/:templateId", async (c) => {
+    const { store } = await access(c, "editor");
+    await groups.deleteTemplate(d, store.id, c.req.param("templateId"));
+    return c.body(null, 204);
+  });
+  app.post("/api/v1/stores/:storeId/campaign-templates/:templateId/campaigns", async (c) => {
+    const { store } = await access(c, "editor");
+    return c.json({ data: await groups.campaignFromTemplate(d, store.id, c.get("user").userId, c.req.param("templateId")) }, 201);
   });
 
   /* ---------- analytics & billing ---------- */

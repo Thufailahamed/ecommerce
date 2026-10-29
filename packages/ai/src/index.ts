@@ -4,6 +4,9 @@ import { AIValidationError, type CampaignGenerationInput } from "./policy.js";
 export * from "./policy.js";
 export { buildPrompt, sanitizeCatalog, suggestTool } from "./prompt.js";
 
+/** Cheap, strong default: Llama 3.3 70B FP8 Fast on Workers AI. Override with the AI_MODEL var. */
+export const DEFAULT_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
 export interface UsageInfo { model: string; inputTokens?: number; outputTokens?: number }
 
 export interface CampaignAIProvider {

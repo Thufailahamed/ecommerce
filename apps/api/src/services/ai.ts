@@ -1,17 +1,19 @@
 import { and, eq, sql } from "drizzle-orm";
 import { AIValidationError, validateProposal, type CampaignGenerationInput } from "@convertflow/ai";
-import { SHIPPED_TOOLS, type Tool } from "@convertflow/contracts";
+import { CampaignConfig, SHIPPED_TOOLS, type Tool } from "@convertflow/contracts";
 import { schema } from "@convertflow/database";
 import { newId } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
 import { getPlan } from "./stores.js";
 import { catalogForAI } from "./catalog.js";
-import { createCampaign, validateDraft } from "./campaigns.js";
+import { createCampaign, getCampaign, updateDraft, validateDraft } from "./campaigns.js";
 
 const TIMEOUT_MS = 25_000;
 
 export interface GenerateRequest {
   objective: string;
+  /** Refine this saved draft in place instead of creating another draft. Only drafts are accepted. */
+  campaignId?: string;
   /** Omit to let the model choose among the available tools. */
   tool?: Tool;
   format?: CampaignGenerationInput["format"];
@@ -34,8 +36,19 @@ export async function generateCampaignDraft(d: Deps, store: typeof schema.stores
     .where(and(eq(schema.usageRecords.organizationId, store.organizationId), eq(schema.usageRecords.metric, "ai_generations"), eq(schema.usageRecords.period, period))).limit(1);
   if ((u?.count ?? 0) >= plan.aiGenerationsPerMonth) throw new HttpError(402, "plan_limit", `You've used all ${plan.aiGenerationsPerMonth} AI generations for this month`);
 
+  const previous = req.campaignId ? await getCampaign(d, store.id, req.campaignId) : undefined;
+  if (previous && previous.status !== "draft") {
+    throw new HttpError(409, "not_draft", "Only draft campaigns can be refined with AI. Open a draft, or duplicate this campaign first.");
+  }
+  const previousConfig = previous ? CampaignConfig.safeParse(previous.draftConfig) : undefined;
+  if (previous && !previousConfig?.success) {
+    throw new HttpError(422, "invalid_campaign", "This draft is not valid yet. Fix it in the editor before asking the AI to change it.");
+  }
+  const { campaignId: _campaignId, ...generationRequest } = req;
   const input: CampaignGenerationInput = {
-    ...req, catalog: await catalogForAI(d, store.id, store.domain), siteDomain: store.domain, currency: store.currency,
+    ...generationRequest,
+    ...(previousConfig?.success ? { previousConfig: previousConfig.data } : {}),
+    catalog: await catalogForAI(d, store.id, store.domain), siteDomain: store.domain, currency: store.currency,
   };
   const log = (status: "succeeded" | "rejected" | "failed", extra: Partial<typeof schema.aiGenerations.$inferInsert> = {}) =>
     d.db.insert(schema.aiGenerations).values({ id: newId("gen"), storeId: store.id, requestedBy: actorId, prompt: `${req.tool ? `[${req.tool}] ` : ""}${req.objective}`.slice(0, 1000), status, createdAt: d.now().toISOString(), ...extra });
@@ -52,10 +65,14 @@ export async function generateCampaignDraft(d: Deps, store: typeof schema.stores
       // Read at call time, not import time: the shipped set is the single gate for what a merchant can publish.
       const proposal = validateProposal(raw, input, { allowedTools: SHIPPED_TOOLS });
       await log("succeeded", meta);
-      const draft = await createCampaign(d, store.id, actorId, proposal.config);
-      // Always a draft: publishing stays a separate, human-approved step with its own guards.
+      // A refinement updates the same draft; a first generation creates one. Nothing is ever published here.
+      const draft = previous ? await updateDraft(d, store.id, previous.id, proposal.config) : await createCampaign(d, store.id, actorId, proposal.config);
       const warnings = [...proposal.repairs, ...validateDraft(proposal.config).warnings];
-      return { campaign: draft, explanation: proposal.explanation, tool: draft.tool, repairs: proposal.repairs, warnings };
+      return {
+        campaign: draft, explanation: proposal.explanation, tool: draft.tool, repairs: proposal.repairs, warnings,
+        updated: Boolean(previous), model: meta.model, gateway: Boolean(d.aiGatewayId),
+        usage: { inputTokens: meta.inputTokens, outputTokens: meta.outputTokens },
+      };
     } catch (e) {
       if (e instanceof AIValidationError) {
         await log("rejected", { ...meta, error: e.issues.join("; ").slice(0, 500) });

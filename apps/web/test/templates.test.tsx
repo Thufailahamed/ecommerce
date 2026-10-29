@@ -34,6 +34,21 @@ describe("campaign templates", () => {
     }
   });
 
+  it("keeps each template's name, type, plan badge and prerequisite notes honest", () => {
+    const growth = new Set(["upsell-product-page", "upsell-free-shipping-gap", "upsell-sold-out", "restock-alert"]);
+    for (const t of TEMPLATES) {
+      const c = t.config();
+      expect(c.name, t.id).toBe(t.name);
+      const declared = t.format === "bar" ? "announcement_bar" : t.format === "feed" ? "feed_item" : t.format;
+      expect(c.format, t.id).toBe(t.id === "restock-alert" ? "restock" : declared);
+      expect(Boolean(t.growth), t.id).toBe(growth.has(t.id));
+      if (c.promotion) expect(t.needs, t.id).toMatch(/promotions in Settings/i);
+      if (c.format === "recommendation" || c.format === "restock") expect(t.needs, t.id).toMatch(/Growth plan/i);
+      if (c.format === "restock") expect(t.needs, t.id).toMatch(/email delivery/i);
+      if (c.toast?.freeShippingThreshold !== undefined || c.recommend?.freeShippingThreshold !== undefined) expect(t.needs, t.id).toMatch(/free-shipping/i);
+    }
+  });
+
   it("has unique ids, hands out fresh copies, and never mentions a discount it does not configure", () => {
     expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(TEMPLATES.length);
     const a = templateById("email-newsletter")!.config(); a.creative.headline = "changed";
@@ -44,10 +59,14 @@ describe("campaign templates", () => {
     }
   });
 
-  it("maps a template to the editor that has the right controls", () => {
-    expect(editorToolOf(templateById("toast-free-shipping")!.config())).toBe("toast");
-    expect(editorToolOf(templateById("upsell-sold-out")!.config())).toBe("upsell");
-    expect(editorToolOf(templateById("bar-sitewide")!.config())).toBeUndefined();
+  it("maps every template to the editor that has the right controls", () => {
+    const expected = (id: string) =>
+      id.startsWith("toast-") ? "toast" :
+      id.startsWith("feed-") ? "feed" :
+      id.startsWith("upsell-") ? "upsell" :
+      id.startsWith("email-") ? "email" :
+      undefined; // the classic editor still owns announcement bars, promo slide-ins and back-in-stock forms
+    for (const t of TEMPLATES) expect(editorToolOf(t.config()), t.id).toBe(expected(t.id));
   });
 });
 
@@ -91,6 +110,45 @@ describe("template gallery", () => {
     const link = await screen.findByRole("link", { name: /Spring toast/ });
     expect(link.getAttribute("href")).toBe("/app/campaigns/new?from=cmp_a");
     expect(screen.queryByText("Old bar")).toBeNull();
+  });
+});
+
+describe("campaign editor: targeting and limits", () => {
+  const open = async (initial: unknown) => {
+    const { CampaignEditor } = await import("@/components/campaign-editor");
+    render(<CampaignEditor store={store} initial={initial} />);
+    return userEvent.setup();
+  };
+
+  it("edits every contract targeting field, including conditions already on a template", async () => {
+    const u = await open(templateById("restock-alert")!.config());
+    await u.click(screen.getByRole("tab", { name: "Targeting" }));
+
+    // The back-in-stock template arrives with a product-availability rule that used to be read-only.
+    expect((screen.getByLabelText("Product availability") as HTMLSelectElement).value).toBe("false");
+    const pages = screen.getByRole("group", { name: "Page type" });
+    expect(within(pages).getByRole("button", { name: "Product" }).getAttribute("aria-pressed")).toBe("true");
+    await u.click(within(pages).getByRole("button", { name: "Home" }));
+    expect(within(pages).getByRole("button", { name: "Home" }).getAttribute("aria-pressed")).toBe("true");
+
+    await u.selectOptions(screen.getByLabelText("Add rule"), "cart_item_count");
+    expect((screen.getByLabelText("Items") as HTMLInputElement).value).toBe("1");
+    await u.selectOptions(screen.getByLabelText("Add rule"), "product_id");
+    expect(screen.getByLabelText("Product ids")).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText("Add rule"), "collection_id");
+    expect(screen.getByLabelText("Collection ids")).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText("Add rule"), "product_available");
+    expect(screen.getAllByLabelText("Product availability")).toHaveLength(2);
+  });
+
+  it("exposes the optional visitor cap, click cooldown and local schedule fields", async () => {
+    const u = await open(templateById("toast-announcement")!.config());
+    await u.click(screen.getByRole("tab", { name: "Display" }));
+    const cap = screen.getByLabelText("Max per visitor (optional)") as HTMLInputElement;
+    await u.type(cap, "3");
+    expect(cap.value).toBe("3");
+    expect(screen.getByLabelText("Hide after click (days)")).toBeTruthy();
+    expect(screen.getByLabelText("Starts").getAttribute("type")).toBe("datetime-local");
   });
 });
 

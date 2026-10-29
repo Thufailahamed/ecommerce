@@ -109,8 +109,8 @@ export function IntegrationsHub() {
               <RefreshCw className="size-[45%] animate-[spin_6s_linear_infinite] text-white/70" />
             </span>
           ))}
-          <p className="absolute left-[4%] top-[-2%] text-[12px] font-semibold uppercase tracking-wider text-white/35">Catalog &amp; context in</p>
-          <p className="absolute right-[4%] top-[-2%] text-[12px] font-semibold uppercase tracking-wider text-white/35">Subscribers &amp; events out</p>
+          <p className="absolute left-[4%] top-[-2%] text-[12px] font-semibold uppercase tracking-wider text-white/50">Catalog &amp; context in</p>
+          <p className="absolute right-[4%] top-[-2%] text-[12px] font-semibold uppercase tracking-wider text-white/50">Subscribers &amp; events out</p>
         </div>
 
         {/* Phones: a plain list */}

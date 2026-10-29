@@ -1,4 +1,27 @@
-# Status (2026-10-27)
+# Status (2026-10-28)
+
+## Campaign workspace (added 2026-10-28)
+
+The campaign area is now one workspace rather than a list plus a single editor:
+
+- **Folders** come from the saved format (Popups, Sticky bars, Embeds, Toasts & feed), with counts, deep links (`/app/campaigns?type=popups`) and an active state in the sidebar. Landing pages are visible but marked Soon and cannot be selected.
+- **Merchant groups** (max 50 per store) support create, rename, delete and per-campaign membership toggles. Groups are organisational only and never affect storefront delivery.
+- **Saved templates** (max 50 per store) capture a valid campaign draft and start a new draft; the per-campaign ⋯ menu saves one, and the Templates page lists, uses and deletes them.
+- **Five campaign steps**: Campaign (performance), Builder, Preview, Launch and Submissions, each with its own page. The ⋯ menu links every step, saves a template and manages groups, with keyboard focus moved into the portalled panel.
+- **Builder completeness**: all ten contract targeting conditions (page, URL, device, cart value/count, product, collection, visitor, pages viewed, stock), multi-value page/device rules, the optional per-visitor cap and click cooldown, and schedule fields that round-trip in the merchant's local time.
+- **Submissions** and **Experiments** pages aggregate the existing form and holdout data across campaigns.
+- **Migration 0007** adds `campaign_groups`, `campaign_group_members` and `campaign_templates`; store purge removes both merchant-owned tables.
+
+**Verified after this change**: `pnpm verify` 24/24 (787 tests: contracts 54, database 29, campaign-engine 40, ai 89, integrations 25, storefront-sdk 140, api 290, web 120), the production Next build, and the full Playwright browser suite **88/88** against the real Worker runtime and a built Next app. The campaign-workspace and studio specs cover the folder/editor flow and the AI generate → select → refine → device flow; the editor tests cover every targeting rule type and the full frequency/schedule controls.
+
+## AI studio (updated 2026-10-28)
+
+- The studio is a refinement loop, not a one-shot generator. Asking for a change loads the saved draft, sends it (minus merchant-owned consent/privacy text) as `<current_draft>`, and updates **the same draft** instead of creating a new one. Only drafts can be refined; live campaigns are refused.
+- The real storefront renderer is the canvas: desktop/mobile preview, click the headline, body, button or signup form to target it, quick suggestions, conversation history, and a busy overlay while a refinement is in flight.
+- The default model is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, routed through the Cloudflare AI Gateway `default` tunnel (`apps/api/wrangler.jsonc`), which AI Gateway auto-creates on the first authenticated request; override with `AI_MODEL`/`AI_GATEWAY_ID`. Every generation stays a draft and remains metered.
+- **AI Gateway connectivity and one full generation were verified live** on 2026-10-28. A direct call returned `"connected"` (42 prompt / 2 completion tokens, 1.53 neurons), and a full toast generation through the same gateway/model produced a valid draft (775 prompt / 215 completion tokens, `gateway: true`) after the server repaired model shorthand and a bare config response. Feed, upsell and email generations still need live runs; the browser test mocks the generation response. The opt-in live probe lives at `apps/api/test/live-ai.test.ts` (`LIVE_AI=1`), so the remaining tools can be checked without changing the normal deterministic suite.
+
+The temporary unlimited free-plan override committed on 2026-10-28 was removed. The free plan again enforces its documented limits (1 store, 1 live campaign, 3 AI generations, 5,000 tracked pageviews, toast and feed only), which the pricing page and API tests expect.
 
 ## Six-tool expansion: where it stands
 
@@ -62,7 +85,7 @@ Auth (PBKDF2, hashed sessions, CSRF origin check, rate limits, Turnstile, **pass
 
 ## Launch blockers (need you)
 1. **Cloudflare account**: create D1/KV/Queues (+DLQ), set secrets, deploy 3 Workers, DNS so web and API share a registrable domain (cookie is `SameSite=Lax`), add rate-limiting rules (the in-app limiter is per-isolate only), real `wrangler` ids. See `docs/deployment.md`.
-2. **Workers AI has never been called for real** (local mode cannot). The model id is an unconfirmed default; run real generations **for every tool** (the prompts, the 1500-token cap and the policy gate were only exercised with recorded/fake responses) and review quality/cost.
+2. **AI generation has one live end-to-end run (toast) but not all tools.** The default is `@cf/meta/llama-3.3-70b-instruct-fp8-fast` routed through the auto-created AI Gateway `default`; change `AI_GATEWAY_ID` for a named gateway. Run live generations for feed, upsell and email, plus refinement flows, and review quality/cost.
 3. **Stripe** (checkout, portal, webhooks) is tested against fakes/fixtures only. Do a test-mode run with real keys.
 4. **Email provider**: the Resend adapter is verified against a mock (including the Workers `fetch` constraint) but not against Resend itself. Verify a sending domain (SPF/DKIM) and send a real message.
 5. **Shopify** (only if distributing via the App Store): install/OAuth/token exchange, Admin API sync, and Shopify Billing are **not built**; theme embed, web pixel and toml are unverified drafts (`apps/shopify-app`).
@@ -85,4 +108,4 @@ Auth (PBKDF2, hashed sessions, CSRF origin check, rate limits, Turnstile, **pass
 - No shared load numbers for production: local figures only. D1 is a single writer; the migration path is in `docs/architecture.md`.
 - No monitoring dashboards or paging wired up (structured logs per request exist; alert on DLQ depth and 5xx rate).
 - Web app has unit tests for the security-critical components and client, not exhaustive coverage of every page (the browser suite covers the flows).
-- Tests were run on one Windows machine. CI on Linux has not run yet.
+- Tests were run on Windows and macOS. CI on Linux has not run yet.

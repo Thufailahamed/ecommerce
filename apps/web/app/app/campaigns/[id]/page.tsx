@@ -5,6 +5,7 @@ import { type CampaignRow, type Store } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { NeedStore } from "@/components/need-store";
 import { CampaignEditor } from "@/components/campaign-editor";
+import { CampaignSteps } from "@/components/campaign-steps";
 import { TemplateGallery } from "@/components/template-gallery";
 import { ErrorNote, PageHeader, Skeleton } from "@/components/ui";
 import { TOOLS } from "@/lib/tools";
@@ -48,6 +49,7 @@ function Edit({ store, id }: { store: Store; id: string }) {
   const ready = isNew ? !fromId || !!data : !!data;
   return (
     <>
+      {!isNew && <CampaignSteps id={id} current="builder" />}
       {(!ready || error) && <PageHeader eyebrow="Campaign editor" title={isNew ? "New campaign" : "Edit campaign"} />}
       <ErrorNote error={error} />
       {waiting && <Skeleton className="h-96" />}

@@ -26,7 +26,7 @@ test.describe.serial("toast tool, end to end", () => {
   test("tool navigation: the shipped tool is usable, the others are honestly marked not available", async () => {
     await m.page.goto("/app/tools/toast");
     const nav = m.page.getByRole("navigation", { name: "Main" });
-    await expect(nav.getByRole("link", { name: /Toasts/ })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Toasts", exact: true })).toBeVisible();
     await expect(nav.getByRole("link", { name: /SMS signup/ })).toContainText("Soon");
     await expect(nav.getByRole("link", { name: /Email signup/ })).not.toContainText("Soon"); // shipped (see email.spec.ts)
     await expect(nav.getByRole("link", { name: /Upsells/ })).not.toContainText("Soon"); // shipped (see upsell.spec.ts)
@@ -66,7 +66,7 @@ test.describe.serial("toast tool, end to end", () => {
     await m.page.getByLabel("Trigger").selectOption("immediate");
     await openTab(m.page, "Targeting");
     await m.page.getByLabel("Add rule").selectOption("page_type");
-    await m.page.getByLabel("Page type").selectOption("product");
+    await expect(m.page.getByRole("group", { name: "Page type" }).getByRole("button", { name: "Product" })).toHaveAttribute("aria-pressed", "true");
 
     // The preview is the real renderer with a clearly labelled sample cart (80% of the threshold = 60).
     const preview = m.page.getByLabel("Campaign preview");
@@ -130,6 +130,8 @@ test.describe.serial("toast tool, end to end", () => {
     await expect(toast.getByText("$15.00 away")).toBeVisible({ timeout: 15_000 });
     await expect(toast.getByRole("status")).toHaveAttribute("aria-live", "polite");
     await expect(toast.getByRole("button", { name: "Dismiss notification" })).toBeVisible();
+    // The 180 ms entrance fades opacity, so let it finish before measuring final colours.
+    await page.waitForTimeout(300);
 
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     const ours = results.violations.filter((v) => v.nodes.some((n) => JSON.stringify(n.target).includes("data-convertflow")));

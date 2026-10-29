@@ -53,3 +53,6 @@ export interface Store { id: string; name: string; platform: string; domain: str
 export interface Me { userId: string; email: string; organizations: { id: string; name: string; role: string }[] }
 export interface Security { mfaEnabled: boolean; recoveryCodesLeft: number; emailVerified: boolean; emailConfigured: boolean }
 export interface CampaignRow { id: string; name: string; tool: "toast" | "feed" | "upsell" | "sms" | "email"; status: "draft" | "scheduled" | "active" | "paused" | "archived"; draftConfig: unknown; publishedVersionId: string | null; updatedAt: string }
+/** A merchant's own folder of campaigns. A campaign can be in several. */
+export interface CampaignGroup { id: string; name: string; campaignIds: string[]; createdAt: string; updatedAt: string }
+export interface SavedTemplate { id: string; name: string; sourceCampaignId: string | null; createdAt: string }

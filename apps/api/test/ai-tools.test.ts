@@ -94,6 +94,44 @@ describe("AI studio: every shipped tool produces a reviewable draft", () => {
   });
 });
 
+describe("AI studio: refine an existing draft", () => {
+  it("updates the same draft with the previous config and feedback, without creating a second campaign", async () => {
+    const provider = new FakeProvider(() => toast({ creative: { headline: "A shorter headline", body: "", ctaLabel: "Go", ctaUrl: "/" } }));
+    const { env, gen, usage } = await setup(provider);
+    const first = await gen({ tool: "toast" });
+    expect(first.status).toBe(201);
+    const id = first.json.data.campaign.id as string;
+    const second = await gen({ campaignId: id, feedback: "Make the headline shorter" });
+    expect(second.status, JSON.stringify(second.json)).toBe(201);
+    expect(second.json.data.updated).toBe(true);
+    expect(second.json.data.campaign.id).toBe(id);
+    expect(second.json.data.campaign.draftConfig.creative.headline).toBe("A shorter headline");
+    expect(provider.inputs).toHaveLength(2);
+    expect(provider.inputs[1]?.feedback).toBe("Make the headline shorter");
+    expect(provider.inputs[1]?.previousConfig).toMatchObject({ creative: { headline: "A shorter headline" } });
+    expect(await env.deps.db.select().from(schema.campaigns)).toHaveLength(1);
+    expect(await usage()).toBe(2);
+    expect(second.json.data.gateway).toBe(false);
+    env.deps.aiGatewayId = "convertflow";
+    const third = await gen({ campaignId: id, feedback: "Shorter still" });
+    expect(third.json.data.gateway).toBe(true);
+  });
+
+  it("refuses to refine a live campaign, another store's campaign, or an invalid id", async () => {
+    const { env, s, gen } = await setup(new FakeProvider(() => toast()));
+    const first = await gen({ tool: "toast" });
+    const id = first.json.data.campaign.id as string;
+    await env.deps.db.update(schema.campaigns).set({ status: "active" }).where(eq(schema.campaigns.id, id));
+    const live = await gen({ campaignId: id, feedback: "shorter" });
+    expect(live.status).toBe(409);
+    expect(live.json.error.code).toBe("not_draft");
+
+    const other = await setup(new FakeProvider(() => toast()));
+    expect((await other.gen({ campaignId: id, feedback: "shorter" })).status).toBe(404);
+    expect((await s.c.post(`/api/v1/stores/${s.storeId}/campaigns/ai-generate`, { objective: "Sell more running shoes", campaignId: "cmp_missing", feedback: "shorter" })).status).toBe(404);
+  });
+});
+
 describe("AI studio: signup forms", () => {
   it("stores the standard consent template, an unticked box and double opt-in, and reports the repair", async () => {
     const { s, gen } = await setup(new FakeProvider(() => email({ form: { consentText: "By browsing you agree to everything", doubleOptIn: false, preChecked: true } })));

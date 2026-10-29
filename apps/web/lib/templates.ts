@@ -49,7 +49,7 @@ export const TEMPLATES: Template[] = [
     config: () => email("Newsletter popup", { trigger: { type: "delay", seconds: 8 } }, { headline: "Join our email list", body: "News and offers, straight to your inbox." }),
   },
   {
-    id: "email-welcome-offer", name: "Welcome offer", blurb: "Reveal a discount code after the shopper confirms.", format: "popup", goal: "signups", needs: "A discount code that already exists in your store, within your store's limit.",
+    id: "email-welcome-offer", name: "Welcome offer", blurb: "Reveal a discount code after the shopper confirms.", format: "popup", goal: "signups", needs: "Enable promotions in Settings and use a discount code that already exists in your store, within your store's limit.",
     config: () => {
       const c = email("Welcome offer", { trigger: { type: "delay", seconds: 6 }, promotion: { code: "WELCOME10", percentOff: 10, label: "Welcome offer" } },
         { headline: "Get 10% off your first order", body: "Sign up and confirm your email to unlock your code." });
@@ -86,7 +86,7 @@ export const TEMPLATES: Template[] = [
     config: () => copy(site(defaultConfig("toast"), { name: "Announcement toast", trigger: { type: "delay", seconds: 4 } }), { headline: "Something new just landed", body: "", ctaLabel: "Take a look", ctaUrl: "/collections/all" }),
   },
   {
-    id: "toast-coupon", name: "Coupon reveal", blurb: "Hides the code until the shopper asks for it.", format: "toast", goal: "coupon", needs: "A discount code that already exists in your store, within your store's limit.",
+    id: "toast-coupon", name: "Coupon reveal", blurb: "Hides the code until the shopper asks for it.", format: "toast", goal: "coupon", needs: "Enable promotions in Settings and use a discount code that already exists in your store, within your store's limit.",
     config: () => copy(site(defaultConfig("toast"), { name: "Coupon reveal", trigger: { type: "delay", seconds: 10 }, toast: { kind: "coupon", corner: "bottom_right", animation: "slide" }, promotion: { code: "THANKS10", percentOff: 10, label: "A little thank-you" } }),
       { headline: "A little thank-you", body: "Tap to reveal your code.", ctaLabel: "Reveal code" }),
   },
@@ -102,11 +102,11 @@ export const TEMPLATES: Template[] = [
     },
   },
   {
-    id: "upsell-product-page", name: "You might also like", blurb: "In-stock products from the same collection on product pages.", format: "recommendation", goal: "add_to_cart", needs: "A catalog with collections imported or synced.",
+    id: "upsell-product-page", name: "You might also like", blurb: "In-stock products from the same collection on product pages.", format: "recommendation", goal: "add_to_cart", growth: true, needs: "Growth plan, and a catalog with collections imported or synced.",
     config: () => site(defaultConfig("upsell"), { name: "You might also like" }),
   },
   {
-    id: "upsell-free-shipping-gap", name: "Close the shipping gap", blurb: "Products that bring the cart up to free shipping.", format: "recommendation", goal: "free_shipping", needs: "A catalog, and your store's real free-shipping minimum.",
+    id: "upsell-free-shipping-gap", name: "Close the shipping gap", blurb: "Products that bring the cart up to free shipping.", format: "recommendation", goal: "free_shipping", growth: true, needs: "Growth plan, a catalog, and your store's real free-shipping minimum.",
     config: () => {
       const c = defaultConfig("upsell");
       return copy(site(c, { name: "Close the shipping gap", recommend: { ...c.recommend!, source: "shipping_threshold", freeShippingThreshold: 75, placement: "cart" },
@@ -114,7 +114,7 @@ export const TEMPLATES: Template[] = [
     },
   },
   {
-    id: "upsell-sold-out", name: "Alternatives when sold out", blurb: "Offer similar products when the viewed one is out of stock.", format: "recommendation", goal: "add_to_cart", needs: "Link alternatives on the Upsells page and keep stock synced.",
+    id: "upsell-sold-out", name: "Alternatives when sold out", blurb: "Offer similar products when the viewed one is out of stock.", format: "recommendation", goal: "add_to_cart", growth: true, needs: "Growth plan, linked alternatives on the Upsells page, and stock synced.",
     config: () => {
       const c = defaultConfig("upsell");
       return copy(site(c, { name: "Alternatives when sold out", recommend: { ...c.recommend!, source: "alternatives" } }), { headline: "Sold out? Try one of these" });
@@ -133,7 +133,7 @@ export const TEMPLATES: Template[] = [
     config: () => copy(site(defaultConfig(), { name: "Announcement popup", trigger: { type: "delay", seconds: 6 } }), { headline: "Our summer collection is here", body: "Take a look at what's new.", ctaLabel: "Shop now", ctaUrl: "/collections/all" }),
   },
   {
-    id: "restock-alert", name: "Back-in-stock alert", blurb: "Shoppers leave an email and get one alert when it returns.", format: "popup", goal: "restock", growth: true, needs: "Your product pages must provide the product id to the snippet.",
+    id: "restock-alert", name: "Back-in-stock alert", blurb: "Shoppers leave an email and get one alert when it returns.", format: "popup", goal: "restock", growth: true, needs: "Growth plan, email delivery configured, and product ids on your product pages.",
     config: () => {
       const c = defaultConfig();
       return copy(site(c, { name: "Back-in-stock alert", format: "restock", trigger: { type: "immediate" }, goal: { type: "subscribe" },

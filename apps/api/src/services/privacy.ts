@@ -25,6 +25,8 @@ export async function purgeStoreData(d: Deps, storeId: string) {
   await d.db.delete(s.auditLogs).where(eq(s.auditLogs.storeId, storeId));
   // cascades: campaigns -> versions, products -> variants, credentials
   await d.db.delete(s.campaigns).where(eq(s.campaigns.storeId, storeId));
+  await d.db.delete(s.campaignTemplates).where(eq(s.campaignTemplates.storeId, storeId));
+  await d.db.delete(s.campaignGroups).where(eq(s.campaignGroups.storeId, storeId));
   await d.db.delete(s.products).where(eq(s.products.storeId, storeId));
   await d.db.delete(s.integrationCredentials).where(eq(s.integrationCredentials.storeId, storeId));
   await d.db.delete(s.stores).where(eq(s.stores.id, storeId));

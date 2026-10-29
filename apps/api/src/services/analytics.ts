@@ -38,16 +38,19 @@ async function experimentResults(d: Deps, storeId: string, from: string, to: str
 async function formResults(d: Deps, storeId: string, from: string, to: string, impressions: Map<string, number>) {
   const ce = schema.consentEvents;
   const campaignId = sql<string>`substr(${ce.source}, 6)`;
-  const rows = await d.db.select({ campaignId, event: ce.event, n: sql<number>`count(*)` }).from(ce)
+  const rows = await d.db.select({ campaignId, event: ce.event, n: sql<number>`count(*)`, lastDay: sql<string>`max(substr(${ce.createdAt}, 1, 10))` }).from(ce)
     .where(and(eq(ce.storeId, storeId), inArray(ce.event, ["requested", "confirmed", "delivery_failed"]), sql`${ce.source} like 'form:%'`, gte(ce.createdAt, `${from}T00:00:00.000Z`), lte(ce.createdAt, `${to}T23:59:59.999Z`)))
     .groupBy(campaignId, ce.event);
   const ids = [...new Set(rows.map((r) => r.campaignId))];
-  return ids.map((id) => {
+  const forms = ids.map((id) => {
     const count = (event: string) => Number(rows.find((r) => r.campaignId === id && r.event === event)?.n ?? 0);
     const requested = count("requested"), confirmed = count("confirmed");
     const imp = impressions.get(id) ?? 0;
     return { campaignId: id, impressions: imp, requested, confirmed, deliveryFailed: count("delivery_failed"), requestRate: imp > 0 ? requested / imp : null, confirmRate: requested > 0 ? confirmed / requested : null };
   }).sort((x, y) => y.requested - x.requested || x.campaignId.localeCompare(y.campaignId));
+  // Server-side signup events are not in analytics_aggregates, so the caller needs their latest day for freshness.
+  const latestDay = rows.map((r) => r.lastDay).filter((x): x is string => !!x).sort().at(-1) ?? null;
+  return { forms, latestDay };
 }
 
 /** Per-campaign activity and last-click attribution for a date range: the one query pair every analytics view is built from. */
@@ -84,12 +87,13 @@ async function campaignActivity(d: Deps, storeId: string, from: string, to: stri
 export async function getAnalytics(d: Deps, storeId: string, from: string, to: string) {
   const { campaigns, attributed } = await campaignActivity(d, storeId, from, to);
 
-  const [obs] = await d.db.select({ orders: sql<number>`count(*)`, revenue: sql<number>`coalesce(sum(${cv.total}),0)` }).from(cv)
+  const [obs] = await d.db.select({ orders: sql<number>`count(*)`, revenue: sql<number>`coalesce(sum(${cv.total}),0)`, lastDay: sql<string>`max(substr(${cv.occurredAt}, 1, 10))` }).from(cv)
     .where(and(eq(cv.storeId, storeId), gte(cv.occurredAt, `${from}T00:00:00.000Z`), lte(cv.occurredAt, `${to}T23:59:59.999Z`)));
 
   const experiments = await experimentResults(d, storeId, from, to);
   const sum = (k: "eligible" | "impressions" | "clicks" | "dismissals" | "addToCarts") => campaigns.reduce((n, c) => n + c[k], 0);
   const imp = sum("impressions"), clk = sum("clicks");
+  const { forms, latestDay: formDay } = await formResults(d, storeId, from, to, new Map(campaigns.map((c) => [c.campaignId, Number(c.impressions)])));
   return {
     range: { from, to },
     totals: {
@@ -98,9 +102,9 @@ export async function getAnalytics(d: Deps, storeId: string, from: string, to: s
       attributedOrders: attributed.reduce((n, r) => n + r.orders, 0), attributedRevenue: attributed.reduce((n, r) => n + r.revenue, 0),
     },
     campaigns,
-    forms: await formResults(d, storeId, from, to, new Map(campaigns.map((c) => [c.campaignId, Number(c.impressions)]))),
+    forms,
     experiments,
-    freshness: { latestDay: campaigns.map((c) => c.lastDay).sort().at(-1) ?? null },
+    freshness: { latestDay: [...campaigns.map((c) => c.lastDay), formDay, obs?.lastDay].filter((x): x is string => !!x).sort().at(-1) ?? null },
     /** Plain-language reminder surfaced in the UI so attributed revenue is never read as lift. */
     notes: ["Attributed revenue counts orders placed within 7 days after a shopper clicked a campaign (last click). It is not incremental revenue: those shoppers may have bought anyway."],
   };
@@ -137,9 +141,9 @@ export async function getToolAnalytics(d: Deps, storeId: string, from: string, t
     .from(schema.campaigns).where(eq(schema.campaigns.storeId, storeId));
 
   const mc = schema.metricCounters;
-  const counters = await d.db.select({ campaignId: mc.campaignId, metric: mc.metric, n: sql<number>`coalesce(sum(${mc.value}),0)` }).from(mc)
+  const counters = await d.db.select({ campaignId: mc.campaignId, metric: mc.metric, n: sql<number>`coalesce(sum(${mc.value}),0)`, lastDay: sql<string>`max(${mc.day})` }).from(mc)
     .where(and(eq(mc.storeId, storeId), gte(mc.day, from), lte(mc.day, to))).groupBy(mc.campaignId, mc.metric);
-  const forms = await formResults(d, storeId, from, to, new Map(activity.map((c) => [c.campaignId, Number(c.impressions)])));
+  const { forms, latestDay: formDay } = await formResults(d, storeId, from, to, new Map(activity.map((c) => [c.campaignId, Number(c.impressions)])));
 
   const raw = new Map<string, Raw>(defs.map((c) => [c.id, emptyRaw()]));
   for (const c of activity) {
@@ -181,7 +185,7 @@ export async function getToolAnalytics(d: Deps, storeId: string, from: string, t
   return {
     range: { from, to },
     tools,
-    freshness: { latestDay: activity.map((c) => c.lastDay).sort().at(-1) ?? null },
+    freshness: { latestDay: [...activity.map((c) => c.lastDay), ...counters.map((c) => c.lastDay), formDay].filter((x): x is string => !!x).sort().at(-1) ?? null },
     notes: [
       "Attributed revenue counts orders placed within 7 days after a shopper clicked a campaign (last click). It is not incremental revenue: those shoppers may have bought anyway.",
       "Views, clicks and form submissions come from visitors who consented to analytics. Sign-up requests and confirmations are counted on the server, so they include everyone.",

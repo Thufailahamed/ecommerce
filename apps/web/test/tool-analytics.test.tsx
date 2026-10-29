@@ -34,6 +34,8 @@ describe("what a tool's section says", () => {
     expect(sectionState(true, rollup("feed"))).toBe("no_campaigns");
     expect(sectionState(true, rollup("feed", { campaigns: 2, live: 1 }))).toBe("no_activity");
     expect(sectionState(true, rollup("feed", { campaigns: 1, metrics: { ...zero(), impressions: 1 } }))).toBe("data");
+    // a failed confirmation email is activity even if its request event is missing
+    expect(sectionState(true, rollup("email", { campaigns: 1, metrics: { ...zero(), deliveryFailed: 1 } }))).toBe("data");
     // an unshipped tool that somehow has data still shows it rather than hiding it
     expect(sectionState(false, rollup("sms", { campaigns: 1, metrics: { ...zero(), requested: 1 } }))).toBe("data");
   });

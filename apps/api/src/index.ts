@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { lt } from "drizzle-orm";
 import { schema } from "@convertflow/database";
-import { WorkersAIProvider, type AiBinding } from "@convertflow/ai";
+import { DEFAULT_AI_MODEL, WorkersAIProvider, type AiBinding } from "@convertflow/ai";
 import { createApp } from "./app.js";
 import { processEvents, purgeDedup, type EventMessage } from "./services/events.js";
 import { publishConfig } from "./services/campaigns.js";
@@ -65,7 +65,8 @@ function deps(env: Env): Deps {
     now: () => new Date(),
     secrets: secrets(env),
   };
-  if (env.AI) d.ai = new WorkersAIProvider(env.AI, { model: env.AI_MODEL ?? "@cf/meta/llama-3.3-70b-instruct-fp8-fast", ...(env.AI_GATEWAY_ID ? { gatewayId: env.AI_GATEWAY_ID } : {}) });
+  if (env.AI) d.ai = new WorkersAIProvider(env.AI, { model: env.AI_MODEL ?? DEFAULT_AI_MODEL, ...(env.AI_GATEWAY_ID ? { gatewayId: env.AI_GATEWAY_ID } : {}) });
+  if (env.AI_GATEWAY_ID) d.aiGatewayId = env.AI_GATEWAY_ID;
   // Email is optional: without both values every email-dependent feature degrades explicitly instead of failing open.
   if (env.RESEND_API_KEY && env.EMAIL_FROM) d.email = new ResendEmail(env.RESEND_API_KEY, env.EMAIL_FROM, fetch, env.RESEND_BASE_URL);
   const q = env.EVENTS_QUEUE;

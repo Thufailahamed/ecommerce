@@ -191,12 +191,12 @@ export function StoreMock({ name, hero, products, tagline = "New season", accent
     <div className="relative h-full w-full overflow-hidden bg-white text-[#0a0c14]">
       <div className={`flex items-center justify-between border-b border-black/5 ${compact ? "px-3 py-2" : "px-5 py-3"}`}>
         <span className={`font-display font-bold uppercase tracking-tight ${compact ? "text-[9px]" : "text-[12px]"}`} style={{ color: accent }}>{name}</span>
-        <span className={`hidden gap-4 text-black/50 sm:flex ${compact ? "text-[7px]" : "text-[10px]"}`}><span>Shop</span><span>New</span><span>Journal</span></span>
+        <span className={`hidden gap-4 text-black/60 sm:flex ${compact ? "text-[7px]" : "text-[10px]"}`}><span>Shop</span><span>New</span><span>Journal</span></span>
         <ShoppingBag className={compact ? "size-2.5" : "size-3.5"} />
       </div>
       <div className={`grid grid-cols-[1.2fr_1fr] items-center gap-3 bg-[#f5f6fa] ${compact ? "px-3 py-2" : "px-5 py-4"}`}>
         <div>
-          <p className={`font-semibold uppercase tracking-wider text-black/40 ${compact ? "text-[6px]" : "text-[9px]"}`}>{tagline}</p>
+          <p className={`font-semibold uppercase tracking-wider text-black/60 ${compact ? "text-[6px]" : "text-[9px]"}`}>{tagline}</p>
           <p className={`mt-1 font-display font-bold uppercase leading-tight ${compact ? "text-[10px]" : "text-[17px]"}`}>Made for<br />every day</p>
           <span className={`mt-2 inline-block rounded-full font-semibold text-white ${compact ? "px-2 py-0.5 text-[6px]" : "px-3 py-1 text-[9px]"}`} style={{ background: accent }}>Shop now</span>
         </div>
@@ -227,7 +227,7 @@ export function PopupMock({ title, body, cta, product, email, compact }: { title
         <div className={compact ? "p-2.5" : "p-4"}>
           <p className={`font-display font-bold uppercase leading-tight ${compact ? "text-[9px]" : "text-[15px]"}`}>{title}</p>
           <p className={`mt-1 leading-snug text-black/60 ${compact ? "text-[6.5px]" : "text-[10.5px]"}`}>{body}</p>
-          {email && <div className={`mt-2 rounded-md border border-black/15 text-black/40 ${compact ? "px-1.5 py-0.5 text-[6px]" : "px-2.5 py-1.5 text-[10px]"}`}>you@email.com</div>}
+          {email && <div className={`mt-2 rounded-md border border-black/15 text-black/60 ${compact ? "px-1.5 py-0.5 text-[6px]" : "px-2.5 py-1.5 text-[10px]"}`}>you@email.com</div>}
           <span className={`mt-2 block rounded-full bg-[#2350ff] text-center font-semibold text-white ${compact ? "py-0.5 text-[6.5px]" : "py-1.5 text-[10.5px]"}`}>{cta}</span>
         </div>
       </div>

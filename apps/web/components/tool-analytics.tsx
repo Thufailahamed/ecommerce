@@ -46,7 +46,7 @@ export type SectionState = "unavailable" | "no_campaigns" | "no_activity" | "dat
 /** What a tool's section should say. A tool with no campaigns is not the same as a live campaign nobody has seen yet. */
 export function sectionState(shipped: boolean, r: ToolRollup): SectionState {
   const m = r.metrics;
-  const active = m.eligible + m.impressions + m.clicks + m.dismissals + m.addToCarts + m.formSubmitAttempts + m.formSubmitSuccesses + m.formSubmitFailures + m.requested + m.confirmed + m.attributedOrders;
+  const active = m.eligible + m.impressions + m.clicks + m.dismissals + m.addToCarts + m.formSubmitAttempts + m.formSubmitSuccesses + m.formSubmitFailures + m.requested + m.confirmed + m.deliveryFailed + m.attributedOrders;
   if (active > 0) return "data";
   if (!shipped && r.campaigns === 0) return "unavailable";
   if (r.campaigns === 0) return "no_campaigns";

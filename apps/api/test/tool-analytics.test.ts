@@ -137,6 +137,25 @@ describe("per-tool analytics: the metrics each tool is measured by", () => {
     expect(forms).toEqual([expect.objectContaining({ campaignId: t.camp.email.id, requested: 4, confirmed: 2, deliveryFailed: 1 })]);
   });
 
+  it("reports the latest event day for server-side signups and browser counters, not only impressions", async () => {
+    const t = await shop();
+    const subscribe = await t.env.app.request("/api/v1/notifications/subscribe", { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ siteId: t.siteKey, campaignId: t.camp.email.id, email: "only-server@example.com", consent: true }) });
+    expect(subscribe.status).toBe(202);
+    // Signups are counted in consent_events, not analytics_aggregates, so they must still set freshness.
+    expect((await t.overall()).freshness.latestDay).toBe("2026-10-27");
+    expect((await t.tools(RANGE)).json.data.freshness.latestDay).toBe("2026-10-27");
+
+    const t2 = await shop();
+    await t2.fire("email", "form_submit_success");
+    // Browser counters are not in analytics_aggregates either.
+    expect((await t2.tools(RANGE)).json.data.freshness.latestDay).toBe("2026-10-27");
+
+    const t3 = await shop();
+    await send(t3.env, [ev(t3.siteKey, { type: "purchase_observed", order: { orderId: "freshness-order", total: 10, currency: "USD" } })]);
+    // An order reported without a campaign is still activity on the overview.
+    expect((await t3.overall()).freshness.latestDay).toBe("2026-10-27");
+  });
+
   it("attributed orders and revenue are shown under the tool whose campaign was clicked", async () => {
     const t = await shop();
     await t.fire("upsell", "recommendation_click");

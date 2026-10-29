@@ -1,20 +1,25 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { BarChart3, Bell, LayoutDashboard, Mail, Megaphone, MessageSquare, Plus, Search, Settings, ShoppingBag, Smartphone, Sparkles, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, Bell, FlaskConical, Folder, Inbox, LayoutDashboard, LayoutTemplate, Mail, Megaphone, MessageSquare, Plus, Search, Settings, ShoppingBag, Smartphone, Sparkles, Users, type LucideIcon } from "lucide-react";
 import { TOOLS, TOOL_ORDER } from "@/lib/tools";
+import { CAMPAIGN_TYPES, campaignsHref } from "@/lib/campaign-types";
 
-interface Command { id: string; group: "Go to" | "Tools" | "Actions"; label: string; hint?: string; href: string; icon: LucideIcon }
+interface Command { id: string; group: "Go to" | "Folders" | "Tools" | "Actions"; label: string; hint?: string; href: string; icon: LucideIcon }
 
 const TOOL_ICON: Record<string, LucideIcon> = { toast: MessageSquare, feed: Bell, upsell: ShoppingBag, sms: Smartphone, email: Mail };
 
 const COMMANDS: Command[] = [
   { id: "overview", group: "Go to", label: "Overview", href: "/app", icon: LayoutDashboard },
   { id: "campaigns", group: "Go to", label: "Campaigns", href: "/app/campaigns", icon: Megaphone },
-  { id: "subscribers", group: "Go to", label: "Subscribers", href: "/app/subscribers", icon: Users },
   { id: "studio", group: "Go to", label: "AI studio", href: "/app/studio", icon: Sparkles },
+  { id: "templates", group: "Go to", label: "Templates", href: "/app/templates", icon: LayoutTemplate },
+  { id: "subscribers", group: "Go to", label: "Subscribers", href: "/app/subscribers", icon: Users },
+  { id: "submissions", group: "Go to", label: "Submissions", href: "/app/submissions", icon: Inbox },
+  { id: "experiments", group: "Go to", label: "Experiments", href: "/app/experiments", icon: FlaskConical },
   { id: "analytics", group: "Go to", label: "Analytics", href: "/app/analytics", icon: BarChart3 },
   { id: "settings", group: "Go to", label: "Settings", href: "/app/settings", icon: Settings },
+  ...CAMPAIGN_TYPES.filter((t) => t.shipped).map((t): Command => ({ id: `folder-${t.key}`, group: "Folders", label: t.label, hint: "Campaign folder", href: campaignsHref(t.key), icon: Folder })),
   { id: "new-campaign", group: "Actions", label: "New campaign", hint: "Build by hand", href: "/app/campaigns/new", icon: Plus },
   { id: "generate", group: "Actions", label: "Generate with AI", hint: "Describe a goal", href: "/app/studio", icon: Sparkles },
   ...TOOL_ORDER.map((k): Command => ({ id: `tool-${k}`, group: "Tools", label: TOOLS[k].name, hint: TOOLS[k].shipped ? undefined : "Not available yet", href: `/app/tools/${k}`, icon: TOOL_ICON[k] ?? Megaphone })),
@@ -51,7 +56,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     else if (e.key === "Escape") { e.preventDefault(); onOpenChange(false); }
   };
 
-  const groups = (["Go to", "Actions", "Tools"] as const).map((g) => ({ g, items: results.filter((c) => c.group === g) })).filter((x) => x.items.length);
+  const groups = (["Go to", "Folders", "Actions", "Tools"] as const).map((g) => ({ g, items: results.filter((c) => c.group === g) })).filter((x) => x.items.length);
   let index = -1;
 
   return (

@@ -47,6 +47,8 @@ export interface Deps {
   db: Db;
   kv: KeyValue;
   ai?: CampaignAIProvider;
+  /** Set when Workers AI calls are routed through Cloudflare AI Gateway. */
+  aiGatewayId?: string;
   now: () => Date;
   secrets?: Secrets;
   /** Absent when no provider is configured: email-dependent features then fail closed or degrade explicitly. */

@@ -26,7 +26,13 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...p }: { href: string
 const apiMock = vi.fn();
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), api: (...a: unknown[]) => apiMock(...a) }));
 // The preview renders through the real SDK renderer; that is covered by the SDK and e2e suites.
-vi.mock("@/components/campaign-preview", () => ({ CampaignPreview: () => <div data-testid="preview" /> }));
+vi.mock("@/components/campaign-preview", () => ({
+  CampaignPreview: ({ onSelectField }: { onSelectField?: (field: string) => void }) => (
+    <div data-testid="preview">
+      {onSelectField && <><button type="button" onClick={() => onSelectField("headline")}>Select headline in preview</button><button type="button" onClick={() => onSelectField("cta")}>Select button in preview</button></>}
+    </div>
+  ),
+}));
 
 const store: Store = { id: "sto_1", name: "Shop", platform: "custom", domain: "shop.example.com", siteKey: "cf_key", currency: "USD", deliveryEnabled: true, organizationId: "o1" };
 vi.mock("@/components/need-store", () => ({ NeedStore: ({ children }: { children: (s: Store) => React.ReactNode }) => <>{children(store)}</> }));
@@ -71,9 +77,10 @@ describe("studio helpers", () => {
       .toMatchObject({ ok: true, body: { tool: "email", format: "slide_in", consentText: "I agree to hear from Shop about arrivals.", privacyUrl: "https://shop.example.com/privacy" } });
   });
 
-  it("sends feedback only when regenerating", () => {
+  it("sends feedback and the draft id only when regenerating", () => {
     expect(buildGenerateBody(form({ feedback: "shorter" }), false)).toEqual({ ok: true, body: { objective: "Grow my email list this season" } });
-    expect(buildGenerateBody(form({ feedback: "shorter" }), true)).toMatchObject({ ok: true, body: { feedback: "shorter" } });
+    expect(buildGenerateBody(form({ feedback: "shorter" }), true, "cmp_1")).toMatchObject({ ok: true, body: { feedback: "shorter", campaignId: "cmp_1" } });
+    expect(buildGenerateBody(form(), true, "cmp_1")).toMatchObject({ ok: false, error: expect.stringMatching(/what to change/) });
   });
 
   it("checks the merchant's facts before a generation is spent", () => {
@@ -244,6 +251,23 @@ describe("AI studio page", () => {
     await u.type(screen.getByLabelText("Feedback for regeneration"), "friendlier tone");
     await u.click(regen);
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
-    expect(lastBody()).toEqual({ objective: "Nudge shoppers toward free shipping", tool: "toast", freeShippingThreshold: 75, feedback: "friendlier tone" });
+    expect(lastBody()).toEqual({ objective: "Nudge shoppers toward free shipping", tool: "toast", campaignId: "cmp_9", freeShippingThreshold: 75, feedback: "friendlier tone" });
+  });
+
+  it("selects an element in the preview and asks the AI to change just that element", async () => {
+    apiMock.mockResolvedValue({ campaign: row(configs.toast), explanation: "Updated." });
+    const u = await page();
+    await u.selectOptions(screen.getByLabelText("What should it build?"), "toast");
+    await u.type(objective(), "Nudge shoppers toward free shipping");
+    await u.click(generate());
+    await screen.findByTestId("studio-review");
+    await u.click(screen.getByRole("button", { name: "Select headline in preview" }));
+    expect(screen.getByText("Editing: Headline")).toBeInTheDocument();
+    const input = screen.getByLabelText("Instruction for headline");
+    await u.type(input, "make it shorter");
+    await u.click(screen.getByRole("button", { name: "Regenerate" }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+    expect(lastBody()).toEqual({ objective: "Nudge shoppers toward free shipping", tool: "toast", campaignId: "cmp_9", feedback: "Change the headline in the current draft. make it shorter" });
+    expect(screen.getByText(/Change the headline in the current draft/)).toBeInTheDocument();
   });
 });

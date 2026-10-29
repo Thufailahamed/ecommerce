@@ -22,7 +22,9 @@ async function createCard(page: Page, o: { name: string; headline: string; categ
   if (o.cartOnly) {
     await openTab(page, "Targeting");
     await page.getByLabel("Add rule").selectOption("page_type");
-    await page.getByLabel("Page type").selectOption("cart");
+    const pages = page.getByRole("group", { name: "Page type" });
+    await pages.getByRole("button", { name: "Product" }).click(); // start from the rule's default
+    await pages.getByRole("button", { name: "Cart" }).click();
   }
   await launch(page);
   await expect(page).toHaveURL(/\/app\/campaigns\/cmp_/);

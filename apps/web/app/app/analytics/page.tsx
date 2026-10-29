@@ -1,6 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
-import { BarChart3, CircleDollarSign, Eye, MousePointerClick, ShoppingBag, Target, TrendingUp, Undo2, Users } from "lucide-react";
+import { ArrowRight, BarChart3, CircleDollarSign, Eye, Mail, MailCheck, MailWarning, MousePointerClick, Percent, ShoppingBag, Target, TrendingUp, Undo2, Users } from "lucide-react";
+import { PLANS, type PlanId } from "@convertflow/contracts";
 import type { Store, CampaignRow } from "@/lib/api";
 import { int, pct, useApi } from "@/lib/use-api";
 import { useRange, type Analytics } from "@/lib/analytics";
@@ -11,28 +13,56 @@ import { Badge, Empty, ErrorNote, Metric, Notice, PageHeader, Select, SectionTit
 import { Funnel } from "@/components/visuals";
 import { Mascot } from "@/components/illustrations";
 
-function View({ store }: { store: Store }) {
+interface Subscription { plan: PlanId }
+
+export function View({ store }: { store: Store }) {
   const [view, setView] = useState<AnalyticsView>("overview");
   const [days, setDays] = useState(30);
   const range = useRange(days);
   const { data, error, loading } = useApi<Analytics>(`/api/v1/stores/${store.id}/analytics?${range}`);
   const names = useApi<CampaignRow[]>(`/api/v1/stores/${store.id}/campaigns`);
+  const plan = useApi<Subscription>(`/api/v1/billing/subscription?organizationId=${store.organizationId}`);
   const nameOf = (id: string) => names.data?.find((c) => c.id === id)?.name ?? id;
   const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: store.currency }).format(n);
   const max = Math.max(1, ...(data?.campaigns.map((c) => c.impressions) ?? [1]));
+  const forms = data?.forms ?? [];
+  const formViews = forms.reduce((n, f) => n + f.impressions, 0);
+  const requests = forms.reduce((n, f) => n + f.requested, 0);
+  const confirmed = forms.reduce((n, f) => n + f.confirmed, 0);
+  const deliveryFailed = forms.reduce((n, f) => n + (f.deliveryFailed ?? 0), 0);
+  const confirmRate = requests > 0 ? confirmed / requests : null;
+  const hasForms = forms.length > 0;
+  const planTools = plan.data ? PLANS[plan.data.plan]?.tools : undefined;
+  const activeEmailCampaign = (names.data ?? []).some((c) => c.tool === "email" && (c.status === "active" || c.status === "scheduled"));
+  const emailNotInPlan = !!planTools && !planTools.includes("email") && activeEmailCampaign;
+  // Every outcome counts as activity. A store can have server-counted signups, or clicks, without an impression total.
+  const hasActivity = !!data && (
+    data.totals.eligible + data.totals.impressions + data.totals.clicks + data.totals.dismissals + (data.totals.addToCarts ?? 0) + data.totals.observedOrders + data.totals.observedRevenue + data.totals.attributedOrders + data.totals.attributedRevenue > 0
+    || hasForms || data.experiments.length > 0
+  );
 
   return (
     <>
       <PageHeader eyebrow="Insights" title="Analytics" sub="First-party campaign activity. Collected only from visitors who gave consent."
         actions={<Select aria-label="Date range" className="w-44" value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></Select>} />
       <ViewTabs value={view} onChange={setView} />
+      {emailNotInPlan && (
+        <div className="mb-6">
+          <Notice tone="warn" role="status">
+            <span className="font-medium">An active email campaign cannot collect sign-ups on your current plan.</span> Email signup is not included in your plan, so the form is still shown but requests are discarded.{" "}
+            <Link href="/app/settings#billing" className="inline-flex items-center gap-1 font-medium text-brand underline-offset-4 hover:underline">Change plan<ArrowRight className="size-3.5" aria-hidden /></Link>
+          </Notice>
+        </div>
+      )}
       {view === "tools" ? <ToolAnalyticsView store={store} range={range} /> : <div role="tabpanel" id="analytics-panel" aria-labelledby="analytics-tab-overview">
       <ErrorNote error={error} />
       {loading && <Skeleton className="h-40" />}
-      {data && data.totals.impressions === 0 && data.totals.observedOrders === 0 && data.experiments.length === 0 && !data.forms?.length && (
-        <Empty icon={BarChart3} visual={<Mascot mood="sleepy" size={104} />} title="No activity in this period" body="Once a published campaign is shown to visitors who have consented to analytics, impressions and clicks appear here. Check Settings to confirm the snippet is installed." />
+      {data && !hasActivity && (
+        <Empty icon={BarChart3} visual={<Mascot mood="sleepy" size={104} />} title="No activity in this period"
+          body="Once a published campaign is shown to visitors who consented to analytics, impressions, clicks and sign-ups appear here. Check that the snippet is installed and the campaign is live."
+          action={<Link href="/app/campaigns" className="text-sm font-semibold text-brand hover:underline">View campaigns</Link>} />
       )}
-      {data && (data.totals.impressions > 0 || data.totals.observedOrders > 0 || data.experiments.length > 0 || (data.forms?.length ?? 0) > 0) && (
+      {data && hasActivity && (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Metric icon={Users} label="Eligible visitors" value={int(data.totals.eligible)} />
@@ -46,27 +76,61 @@ function View({ store }: { store: Store }) {
             <Metric icon={Target} label="Attributed orders" value={int(data.totals.attributedOrders)} note="Last click, 7 days" />
             <Metric icon={TrendingUp} label="Attributed revenue" value={money(data.totals.attributedRevenue)} note="Not incremental" />
           </div>
+          {hasForms && (
+            <div role="group" aria-label="Email signups" className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Metric icon={Mail} label="Sign-up requests" value={int(requests)} note="Server-counted" />
+              <Metric icon={MailCheck} label="Confirmed opt-ins" value={int(confirmed)} note="Confirmed from inbox" />
+              <Metric icon={Percent} label="Confirmation rate" value={pct(confirmRate)} note="Confirmed ÷ requests" />
+              <Metric icon={MailWarning} label="Delivery failures" value={int(deliveryFailed)} note="Confirmation emails" />
+            </div>
+          )}
+          {deliveryFailed > 0 && (
+            <div className="mt-4">
+              <Notice tone="warn" role="status">
+                {int(deliveryFailed)} confirmation {deliveryFailed === 1 ? "email" : "emails"} could not be sent in this period. Those shoppers were not confirmed; check your email sending setup.
+              </Notice>
+            </div>
+          )}
           <div className="mt-4"><Notice>{data.notes[0]}</Notice></div>
 
-          <section aria-labelledby="funnel-h" className="card mt-6 p-6 md:p-7">
-            <SectionTitle id="funnel-h" sub="From eligible visitors to attributed orders in the selected period.">Funnel</SectionTitle>
-            <Funnel steps={[
-              { label: "Eligible", value: data.totals.eligible },
-              { label: "Impressions", value: data.totals.impressions },
-              { label: "Clicks", value: data.totals.clicks },
-              { label: "Attributed orders", value: data.totals.attributedOrders },
-            ]} />
-          </section>
+          <div className={hasForms ? "mt-6 grid gap-6 lg:grid-cols-2" : "mt-6"}>
+            <section aria-labelledby="funnel-h" className="card p-6 md:p-7">
+              <SectionTitle id="funnel-h" sub="From eligible visitors to attributed orders in the selected period.">Campaign journey</SectionTitle>
+              <div className="mt-6">
+                <Funnel steps={[
+                  { label: "Eligible", value: data.totals.eligible },
+                  { label: "Impressions", value: data.totals.impressions },
+                  { label: "Clicks", value: data.totals.clicks },
+                  { label: "Attributed orders", value: data.totals.attributedOrders },
+                ]} />
+              </div>
+            </section>
+            {hasForms && (
+              <section aria-labelledby="signup-funnel-h" className="card p-6 md:p-7">
+                <SectionTitle id="signup-funnel-h" sub="From form views to confirmed opt-ins in the selected period.">Signup journey</SectionTitle>
+                <div className="mt-6">
+                  <Funnel steps={[
+                    { label: "Form views", value: formViews },
+                    { label: "Sign-up requests", value: requests },
+                    { label: "Confirmed", value: confirmed },
+                  ]} />
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-ink-3">Requests and confirmations are counted on our server, so they include shoppers who declined analytics. The form-view rate is an estimate.</p>
+              </section>
+            )}
+          </div>
 
+          {data.campaigns.length > 0 && (
           <section aria-labelledby="by-campaign-h" className="mt-10">
             <SectionTitle id="by-campaign-h">By campaign</SectionTitle>
             <div className="card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className={tableClass}>
+                  <caption className="sr-only">Campaign activity</caption>
                   <thead><tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3"><th className="font-medium">Campaign</th><th className="w-1/3 font-medium">Impressions</th><th className="text-right font-medium">Clicks</th><th className="text-right font-medium">CTR</th><th className="text-right font-medium">Attributed</th></tr></thead>
                   <tbody>{data.campaigns.map((c) => (
                     <tr key={c.campaignId}>
-                      <td className="font-medium">{nameOf(c.campaignId)}</td>
+                      <td className="font-medium"><Link href={`/app/campaigns/${c.campaignId}/performance`} className="hover:underline">{nameOf(c.campaignId)}</Link></td>
                       <td><div className="flex items-center gap-3"><div className="h-2 rounded-full bg-gradient-to-r from-brand-solid to-brand-glow shadow-[0_0_12px_rgba(35,80,255,0.6)]" style={{ width: `${(c.impressions / max) * 100}%`, minWidth: 4 }} /><span className="num whitespace-nowrap text-ink-2">{int(c.impressions)}</span></div></td>
                       <td className="num text-right">{int(c.clicks)}</td><td className="num text-right">{pct(c.ctr)}</td>
                       <td className="num text-right whitespace-nowrap">{c.attributedOrders} · {money(c.attributedRevenue)}</td>
@@ -75,6 +139,7 @@ function View({ store }: { store: Store }) {
               </div>
             </div>
           </section>
+          )}
 
           {data.forms && <FormResults forms={data.forms} nameOf={nameOf} />}
           {data.experiments.length > 0 && (

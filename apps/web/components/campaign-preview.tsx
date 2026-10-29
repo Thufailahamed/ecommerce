@@ -4,6 +4,8 @@ import { CampaignConfig } from "@convertflow/contracts";
 import { renderCampaign, type RecProduct } from "@convertflow/storefront-sdk";
 
 export type Device = "desktop" | "mobile";
+/** The parts of a draft a merchant can select directly in the studio canvas. */
+export type PreviewField = "headline" | "body" | "cta" | "form";
 
 /** Clearly labelled stand-ins: the preview has no catalog and no shopper. They never reach the storefront. */
 export const SAMPLE_PRODUCTS: RecProduct[] = [
@@ -15,13 +17,17 @@ export const SAMPLE_PRODUCTS: RecProduct[] = [
   { id: "sample-6", title: "Sample product six", url: "/", price: 41, addable: true, variantId: "6" },
 ];
 
+const normalise = (s: string) => s.replace(/\s+/g, " ").trim();
+/** The SDK mounts its own host inside the frame and attaches an open shadow root to it. */
+const shadowRootOf = (el: HTMLElement): ShadowRoot | null => el.querySelector<HTMLElement>("[data-convertflow]")?.shadowRoot ?? el.shadowRoot;
+
 /**
  * Renders with the exact function the storefront SDK uses. The wrapper has a CSS transform,
  * which makes it the containing block for the SDK's position:fixed elements, so the campaign
  * stays inside the frame instead of covering the editor.
  */
 /** `fill` stretches the frame to its container (the builder canvas) instead of using the fixed heights of the compact preview. */
-export function CampaignPreview({ config, device, domain, currency, fill = false }: { config: unknown; device: Device; domain: string; currency?: string; fill?: boolean }) {
+export function CampaignPreview({ config, device, domain, currency, fill = false, onSelectField, selectedField }: { config: unknown; device: Device; domain: string; currency?: string; fill?: boolean; onSelectField?: (field: PreviewField) => void; selectedField?: PreviewField | null }) {
   const frame = useRef<HTMLDivElement>(null);
   const parsed = CampaignConfig.safeParse(config);
 
@@ -43,6 +49,95 @@ export function CampaignPreview({ config, device, domain, currency, fill = false
     });
     return () => h.destroy();
   }, [parsed.success, parsed.success ? JSON.stringify(parsed.data) : null, device, sampleCart, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The preview is the real renderer inside a shadow root. In the studio, selecting text or a form maps it back to
+  // the corresponding field instead of activating the campaign's link or submit behaviour.
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || !parsed.success || !onSelectField) return;
+    const cfg = parsed.data;
+    const headline = normalise(cfg.creative.headline);
+    const body = normalise(cfg.creative.body);
+    const cta = normalise(cfg.creative.ctaLabel);
+    const handler = (event: MouseEvent) => {
+      for (const node of event.composedPath()) {
+        if (!(node instanceof HTMLElement) || node === el) continue;
+        const label = node.getAttribute("aria-label");
+        if (node.tagName === "BUTTON" && (label === "Close" || label === "Dismiss notification")) {
+          // Keep the preview open while the merchant is inspecting it.
+          event.preventDefault(); event.stopPropagation(); return;
+        }
+        if (node.tagName === "FORM") { event.preventDefault(); event.stopPropagation(); onSelectField("form"); return; }
+        const text = normalise(node.textContent ?? "");
+        if (!text) continue;
+        const field = text === headline ? "headline" : text === body ? "body" : text === cta ? "cta" : undefined;
+        if (field) { event.preventDefault(); event.stopPropagation(); onSelectField(field); return; }
+      }
+      // Selection mode: never let a preview link navigate the dashboard or a form submit.
+      event.preventDefault(); event.stopPropagation();
+    };
+    el.addEventListener("click", handler, true);
+    return () => el.removeEventListener("click", handler, true);
+  }, [parsed.success, parsed.success ? JSON.stringify(parsed.data) : null, onSelectField]);
+
+  // Mark the four selectable parts so the studio can show a pointer and a hover outline.
+  useEffect(() => {
+    const el = frame.current;
+    const root = el ? shadowRootOf(el) : null;
+    if (!el || !root || !parsed.success || !onSelectField) return;
+    const cfg = parsed.data;
+    const textFor = (field: PreviewField) => field === "headline" ? cfg.creative.headline : field === "body" ? cfg.creative.body : field === "cta" ? cfg.creative.ctaLabel : "";
+    const findText = (value: string) => {
+      const text = normalise(value);
+      if (!text) return undefined;
+      const candidates = Array.from(root.querySelectorAll<HTMLElement>("*")).filter((node) => normalise(node.textContent ?? "") === text);
+      return candidates.find((node) => !Array.from(node.children).some((child) => normalise(child.textContent ?? "") === text)) ?? candidates[0];
+    };
+    const nodes = new Set<HTMLElement>();
+    for (const field of ["headline", "body", "cta"] as const) {
+      const node = findText(textFor(field));
+      if (node) nodes.add(node);
+    }
+    const form = root.querySelector("form");
+    if (form instanceof HTMLElement) nodes.add(form);
+    const style = document.createElement("style");
+    style.textContent = "[data-cf-selectable]{cursor:pointer!important;border-radius:6px;transition:outline-color .15s ease,box-shadow .15s ease} [data-cf-selectable]:hover{outline:1px dashed rgba(111,143,255,.8);outline-offset:4px}";
+    root.appendChild(style);
+    nodes.forEach((node) => node.setAttribute("data-cf-selectable", "true"));
+    return () => { style.remove(); nodes.forEach((node) => node.removeAttribute("data-cf-selectable")); };
+  }, [parsed.success, parsed.success ? JSON.stringify(parsed.data) : null, onSelectField, device]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Draw a clear outline around the field the merchant selected in the studio rail.
+  useEffect(() => {
+    const el = frame.current;
+    const root = el ? shadowRootOf(el) : null;
+    if (!el || !root || !parsed.success || !selectedField) return;
+    const cfg = parsed.data;
+    const value = selectedField === "headline" ? cfg.creative.headline : selectedField === "body" ? cfg.creative.body : selectedField === "cta" ? cfg.creative.ctaLabel : "";
+    let target: HTMLElement | undefined;
+    if (selectedField === "form") {
+      const form = root.querySelector("form");
+      if (form instanceof HTMLElement) target = form;
+    } else {
+      const text = normalise(value);
+      if (text) {
+        const candidates = Array.from(root.querySelectorAll<HTMLElement>("*")).filter((node) => normalise(node.textContent ?? "") === text);
+        target = candidates.find((node) => !Array.from(node.children).some((child) => normalise(child.textContent ?? "") === text)) ?? candidates[0];
+      }
+    }
+    if (!target) return;
+    const previous = { outline: target.style.outline, outlineOffset: target.style.outlineOffset, borderRadius: target.style.borderRadius, boxShadow: target.style.boxShadow };
+    target.style.outline = "2px solid #6f8fff";
+    target.style.outlineOffset = "4px";
+    target.style.borderRadius = "6px";
+    target.style.boxShadow = "0 0 0 4px rgba(35,80,255,0.18)";
+    return () => {
+      target.style.outline = previous.outline;
+      target.style.outlineOffset = previous.outlineOffset;
+      target.style.borderRadius = previous.borderRadius;
+      target.style.boxShadow = previous.boxShadow;
+    };
+  }, [parsed.success, parsed.success ? JSON.stringify(parsed.data) : null, selectedField, device]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={`flex justify-center ${fill ? "h-full" : ""}`}>

@@ -1,28 +1,113 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
-import { Search } from "lucide-react";
-import { CommandPalette, useCommandShortcut } from "@/components/command-palette";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { BarChart3, Bell, ChevronDown, LayoutDashboard, LogOut, Mail, Megaphone, Menu, MessageSquare, Settings, ShoppingBag, Smartphone, Sparkles, Users, X, type LucideIcon } from "lucide-react";
+import {
+  BarChart3, Bell, ChevronDown, FlaskConical, Inbox, LayoutDashboard, LayoutTemplate, LogOut,
+  Mail, Megaphone, Menu, MessageSquare, Search, Settings, ShoppingBag, Smartphone, Sparkles,
+  Users, X, type LucideIcon,
+} from "lucide-react";
+import { CommandPalette, useCommandShortcut } from "@/components/command-palette";
 import { SessionProvider, useSession } from "@/lib/session";
 import { api } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { VerifyBanner } from "@/components/verify-banner";
 import { Spotlight } from "@/components/marketing/fx";
 import { TOOLS, TOOL_ORDER } from "@/lib/tools";
+import { CAMPAIGN_TYPES, campaignsHref } from "@/lib/campaign-types";
 
-const NAV: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/app", label: "Overview", icon: LayoutDashboard },
-  { href: "/app/campaigns", label: "Campaigns", icon: Megaphone },
+interface NavItem { href: string; label: string; icon: LucideIcon }
+
+const OVERVIEW: NavItem = { href: "/app", label: "Overview", icon: LayoutDashboard };
+const CAMPAIGNS: NavItem = { href: "/app/campaigns", label: "Campaigns", icon: Megaphone };
+const AI_STUDIO: NavItem = { href: "/app/studio", label: "AI studio", icon: Sparkles };
+const TEMPLATES: NavItem = { href: "/app/templates", label: "Templates", icon: LayoutTemplate };
+const SETTINGS: NavItem = { href: "/app/settings", label: "Settings", icon: Settings };
+
+const WORKSPACE: NavItem[] = [OVERVIEW, CAMPAIGNS, AI_STUDIO, TEMPLATES];
+const AUDIENCE: NavItem[] = [
   { href: "/app/subscribers", label: "Subscribers", icon: Users },
-  { href: "/app/studio", label: "AI studio", icon: Sparkles },
+  { href: "/app/submissions", label: "Submissions", icon: Inbox },
+];
+const MEASURE: NavItem[] = [
+  { href: "/app/experiments", label: "Experiments", icon: FlaskConical },
   { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
-const TOOL_ICON = { toast: MessageSquare, feed: Bell, upsell: ShoppingBag, sms: Smartphone, email: Mail } as const;
+const TOOL_ICON: Record<string, LucideIcon> = { toast: MessageSquare, feed: Bell, upsell: ShoppingBag, sms: Smartphone, email: Mail };
+
+const isActive = (path: string, href: string) => href === "/app" ? path === "/app" : path.startsWith(href);
+
+const linkClass = (active: boolean) => clsx(
+  "group flex h-10 items-center gap-3 rounded-xl px-2.5 text-sm font-medium transition-all duration-200",
+  active ? "nav-active text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink",
+);
+const tileClass = (active: boolean) => clsx(
+  "grid size-7 shrink-0 place-items-center rounded-lg transition-colors",
+  active ? "bg-brand-solid text-white shadow-[0_6px_16px_-6px_rgba(35,80,255,1)]" : "bg-white/[0.05] text-ink-3 group-hover:text-ink-2",
+);
+
+function SectionLabel({ id, children, className }: { id: string; children: React.ReactNode; className?: string }) {
+  return <div id={id} className={clsx("mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-3", className)}>{children}</div>;
+}
+
+function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate: () => void }) {
+  const Icon = item.icon;
+  return (
+    <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={linkClass(active)}>
+      <span className={tileClass(active)}><Icon className="size-4" aria-hidden /></span>
+      <span className="truncate">{item.label}</span>
+    </Link>
+  );
+}
+
+/** Campaigns is both a destination and a disclosure for its folders, so the row is split into a link and a chevron. */
+function CampaignsRow({ active, open, onToggle, onNavigate }: { active: boolean; open: boolean; onToggle: () => void; onNavigate: () => void }) {
+  return (
+    <div className={clsx("group flex items-center rounded-xl transition-colors", active ? "nav-active" : "hover:bg-white/[0.04]")}>
+      <Link href="/app/campaigns" onClick={onNavigate} aria-current={active ? "page" : undefined}
+        className={clsx("flex h-10 min-w-0 flex-1 items-center gap-3 rounded-xl px-2.5 text-sm font-medium transition-colors", active ? "text-ink" : "text-ink-2 group-hover:text-ink")}>
+        <span className={tileClass(active)}><Megaphone className="size-4" aria-hidden /></span>
+        <span className="truncate">Campaigns</span>
+      </Link>
+      <button type="button" aria-expanded={open} aria-controls="campaign-folders" aria-label={open ? "Hide campaign folders" : "Show campaign folders"}
+        onClick={onToggle} className={clsx("mr-1 grid size-7 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-white/[0.08] hover:text-ink", active && "text-ink-2")}>
+        <ChevronDown className={clsx("size-3.5 transition-transform", !open && "-rotate-90")} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+/** The folders themselves, kept presentational so the Suspense fallback and the live links look identical. */
+function FolderList({ current, onNavigate }: { current: string | null; onNavigate: () => void }) {
+  return (
+    <div className="ml-[26px] space-y-0.5 border-l border-line pl-3">
+      {CAMPAIGN_TYPES.map((t) => t.shipped ? (
+        <Link key={t.key} href={campaignsHref(t.key)} onClick={onNavigate} aria-current={current === t.key ? "page" : undefined}
+          className={clsx("group flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] transition-colors",
+            current === t.key ? "bg-brand-soft text-ink" : "text-ink-3 hover:bg-white/[0.04] hover:text-ink-2")}>
+          <span aria-hidden className={clsx("size-1.5 shrink-0 rounded-full transition-colors", current === t.key ? "bg-brand shadow-[0_0_8px_rgba(111,143,255,0.9)]" : "bg-line-strong group-hover:bg-ink-3")} />
+          <span className="truncate">{t.label}</span>
+        </Link>
+      ) : (
+        <span key={t.key} aria-disabled="true" className="flex h-8 cursor-not-allowed items-center gap-2 rounded-lg px-2 text-[13px] text-ink-3 opacity-60">
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-line" />
+          <span className="truncate">{t.label}</span>
+          <span className="ml-auto rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide">Soon</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Reads the folder from `?type=`, so the sidebar reflects the list's filter without a second state copy. */
+function FolderLinks({ onNavigate }: { onNavigate: () => void }) {
+  const path = usePathname();
+  const params = useSearchParams();
+  const current = path === "/app/campaigns" ? params.get("type") : null;
+  return <FolderList current={current} onNavigate={onNavigate} />;
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -30,101 +115,147 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { me, stores, store, selectStore } = useSession();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [foldersOpen, setFoldersOpen] = useState(path.startsWith("/app/campaigns"));
+  const [toolsOpen, setToolsOpen] = useState(path.startsWith("/app/tools/"));
   const openPalette = useCallback(() => setPaletteOpen(true), []);
   useCommandShortcut(openPalette);
 
-  const link = (active: boolean) =>
-    clsx(
-      "group flex h-11 items-center gap-3 rounded-xl px-2.5 text-sm font-medium transition-all duration-200",
-      active ? "nav-active text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink",
-    );
-  const tile = (active: boolean) =>
-    clsx(
-      "grid size-8 shrink-0 place-items-center rounded-lg transition-colors",
-      active ? "bg-brand-solid text-white shadow-[0_6px_16px_-6px_rgba(35,80,255,1)]" : "bg-white/[0.05] text-ink-3 group-hover:text-ink-2",
-    );
+  const campaignsActive = path.startsWith("/app/campaigns");
+  const toolsActive = path.startsWith("/app/tools/");
 
-  const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-1 overflow-y-auto">
-      <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">Workspace</div>
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = href === "/app" ? path === href : path.startsWith(href);
-        return (
-          <Link key={href} href={href} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={link(active)}>
-            <span className={tile(active)}><Icon className="size-4" aria-hidden /></span>
-            {label}
-          </Link>
-        );
-      })}
-      <div className="mb-2 mt-6 px-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3" id="tools-heading">Tools</div>
-      <div role="group" aria-labelledby="tools-heading" className="flex flex-col gap-1">
-        {TOOL_ORDER.map((key) => {
-          const t = TOOLS[key];
-          const href = "/app/tools/" + key;
-          const Icon = TOOL_ICON[key];
-          const active = path.startsWith(href);
-          return (
-            <Link key={key} href={href} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={link(active)}>
-              <span className={tile(active)}><Icon className="size-4" aria-hidden /></span>
-              {t.name}
-              {!t.shipped && <span className="ml-auto rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3 ring-1 ring-white/10">Soon</span>}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
+  // Open a disclosure when its section becomes the current page, but remember a manual choice elsewhere.
+  useEffect(() => { if (campaignsActive) setFoldersOpen(true); }, [campaignsActive]);
+  useEffect(() => { if (toolsActive) setToolsOpen(true); }, [toolsActive]);
+
+  const org = me.organizations.find((o) => o.id === store?.organizationId) ?? me.organizations[0];
+  const role = org?.role ? org.role.charAt(0).toUpperCase() + org.role.slice(1) : "Member";
+  // Keep the profile compact: a long email-like organisation name is not useful here.
+  const orgLabel = org?.name && org.name.length <= 24 && !org.name.includes("@") ? org.name : null;
+  const closeOnNavigate = () => setOpen(false);
 
   return (
-    <div className="relative min-h-dvh bg-canvas md:grid md:grid-cols-[256px_1fr]">
+    <div className="relative min-h-dvh bg-canvas md:grid md:grid-cols-[272px_1fr]">
       <Spotlight />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <aside className={clsx(
-        "fixed inset-y-0 left-0 z-30 flex w-[256px] flex-col border-r border-line bg-[#080a10]/95 p-4 backdrop-blur-xl transition-transform duration-300 md:static md:translate-x-0",
+        "fixed inset-y-0 left-0 z-30 flex w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-line bg-[#080a10]/95 p-4 shadow-2xl backdrop-blur-xl transition-transform duration-300 md:sticky md:inset-y-auto md:left-auto md:top-0 md:h-dvh md:w-[272px] md:max-w-none md:translate-x-0 md:shadow-none",
         open ? "translate-x-0" : "-translate-x-full",
       )}>
-        <div className="mb-7 flex items-center justify-between px-1.5 pt-1">
-          <Link href="/app" aria-label="Overview" className="rounded-lg"><Logo /></Link>
-          <button className="rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink md:hidden" aria-label="Close menu" onClick={() => setOpen(false)}><X className="size-5" /></button>
-        </div>
-
-        {stores.length > 0 && (
-          <div className="mb-6">
-            <label htmlFor="store-switch" className="mb-2 block px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">Store</label>
-            <div className="relative">
-              <select id="store-switch" value={store?.id ?? ""} onChange={(e) => selectStore(e.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-line bg-surface pl-3.5 pr-9 text-sm font-medium transition-colors hover:border-line-strong focus-visible:border-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft">
-                {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-3.5 size-4 text-ink-3" />
-            </div>
+        <div aria-hidden className="sidebar-glow pointer-events-none absolute inset-x-0 top-0 h-44" />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="mb-5 flex shrink-0 items-center justify-between px-1">
+            <Link href="/app" aria-label="Overview" className="rounded-lg"><Logo /></Link>
+            <button className="rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink md:hidden" aria-label="Close menu" onClick={() => setOpen(false)}><X className="size-5" /></button>
           </div>
-        )}
 
-        <button onClick={openPalette} className="group mb-5 flex h-10 w-full items-center gap-2.5 rounded-xl border border-line bg-white/[0.02] px-3 text-sm text-ink-3 transition-colors hover:border-line-strong hover:text-ink-2">
-          <Search className="size-4" aria-hidden />
-          <span className="flex-1 text-left">Search</span>
-          <kbd className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-ink-3 group-hover:text-ink-2">⌘K</kbd>
-        </button>
-        {nav}
+          {stores.length > 0 && (
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between px-1">
+                <label htmlFor="store-switch" className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-3">Store</label>
+                {stores.length > 1 && <span className="text-[10px] text-ink-3">{stores.length} stores</span>}
+              </div>
+              <div className="group relative">
+                <div aria-hidden className="pointer-events-none flex h-[54px] items-center gap-3 rounded-xl border border-line bg-surface/70 px-3 transition-all group-hover:border-line-strong group-focus-within:border-brand group-focus-within:ring-4 group-focus-within:ring-brand-soft">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-solid to-brand-glow text-xs font-bold uppercase text-white shadow-[0_6px_16px_-8px_rgba(35,80,255,1)]">
+                    {store?.name?.charAt(0).toUpperCase() ?? "S"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-ink">{store?.name ?? "Select a store"}</div>
+                    <div className="truncate text-[10px] text-ink-3">{store?.domain ?? "No store connected"}</div>
+                  </div>
+                  <ChevronDown className="size-4 shrink-0 text-ink-3 transition-transform group-focus-within:rotate-180" />
+                </div>
+                <select id="store-switch" value={store?.id ?? ""} onChange={(e) => selectStore(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-xl opacity-0">
+                  {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
-        <div className="mt-auto pt-6">
-          <div className="card-flat flex items-center gap-3 rounded-2xl border border-line bg-surface p-3">
-            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-solid to-brand-glow text-sm font-bold uppercase text-white">
-              {me.email.charAt(0)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-ink-2" title={me.email}>{me.email}</div>
-              <button className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-ink"
-                onClick={async () => { await api("/api/v1/auth/logout", { method: "POST", body: {} }); router.replace("/login"); }}>
-                <LogOut className="size-3" aria-hidden />Sign out
+          <button type="button" onClick={openPalette} aria-keyshortcuts="Meta+K Control+K"
+            className="group mb-4 flex h-9 w-full shrink-0 items-center gap-2.5 rounded-xl border border-line bg-white/[0.02] px-3 text-[13px] text-ink-3 transition-all hover:border-brand-tint hover:bg-brand-soft hover:text-ink-2">
+            <Search className="size-3.5" aria-hidden />
+            <span className="flex-1 text-left">Search</span>
+            <kbd aria-hidden className="rounded-md border border-line bg-canvas/40 px-1.5 py-0.5 text-[10px] text-ink-3 group-hover:text-ink-2">⌘K</kbd>
+          </button>
+
+          <nav aria-label="Main" className="sidebar-scroll -mr-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-3 pr-1">
+            <SectionLabel id="workspace-heading">Workspace</SectionLabel>
+            <div role="group" aria-labelledby="workspace-heading" className="space-y-0.5">
+              {WORKSPACE.map((item) => item.href === "/app/campaigns" ? (
+                <div key={item.href}>
+                  <CampaignsRow active={campaignsActive} open={foldersOpen} onToggle={() => setFoldersOpen((v) => !v)} onNavigate={closeOnNavigate} />
+                  <div id="campaign-folders" hidden={!foldersOpen} role="group" aria-label="Campaign folders" className="pb-1">
+                    <Suspense fallback={<FolderList current={null} onNavigate={closeOnNavigate} />}>
+                      <FolderLinks onNavigate={closeOnNavigate} />
+                    </Suspense>
+                  </div>
+                </div>
+              ) : (
+                <NavLink key={item.href} item={item} active={isActive(path, item.href)} onNavigate={closeOnNavigate} />
+              ))}
+            </div>
+
+            <SectionLabel id="audience-heading" className="mt-5">Audience</SectionLabel>
+            <div role="group" aria-labelledby="audience-heading" className="space-y-0.5">
+              {AUDIENCE.map((item) => <NavLink key={item.href} item={item} active={isActive(path, item.href)} onNavigate={closeOnNavigate} />)}
+            </div>
+
+            <SectionLabel id="measure-heading" className="mt-5">Measure</SectionLabel>
+            <div role="group" aria-labelledby="measure-heading" className="space-y-0.5">
+              {MEASURE.map((item) => <NavLink key={item.href} item={item} active={isActive(path, item.href)} onNavigate={closeOnNavigate} />)}
+            </div>
+
+            <div className="mt-auto pt-5">
+              <button type="button" id="tools-heading" aria-expanded={toolsOpen} aria-controls="tools-list" onClick={() => setToolsOpen((v) => !v)}
+                className="flex w-full items-center justify-between rounded-lg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-3 transition-colors hover:text-ink-2">
+                <span>Tools</span>
+                <ChevronDown className={clsx("size-3 transition-transform", !toolsOpen && "-rotate-90")} aria-hidden />
+              </button>
+              <div id="tools-list" role="group" aria-labelledby="tools-heading" hidden={!toolsOpen} className="mt-1 space-y-0.5">
+                {TOOL_ORDER.map((key) => {
+                  const t = TOOLS[key];
+                  const href = "/app/tools/" + key;
+                  const Icon = TOOL_ICON[key] ?? Megaphone;
+                  const active = path.startsWith(href);
+                  return (
+                    <Link key={key} href={href} onClick={closeOnNavigate} aria-current={active ? "page" : undefined}
+                      className={clsx("group flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+                        active ? "bg-brand-soft text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink")}>
+                      <Icon className={clsx("size-4 shrink-0", active ? "text-brand" : "text-ink-3 group-hover:text-ink-2")} aria-hidden />
+                      <span className="truncate">{t.name}</span>
+                      {!t.shipped && <span className="ml-auto rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ink-3">Soon</span>}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </nav>
+
+          <div className="shrink-0 border-t border-line pt-3">
+            <nav aria-label="Account">
+              <NavLink item={SETTINGS} active={isActive(path, SETTINGS.href)} onNavigate={closeOnNavigate} />
+            </nav>
+            <div className="mt-2 flex items-center gap-2.5 rounded-xl border border-line bg-white/[0.02] p-2.5">
+              <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-solid to-brand-glow text-[11px] font-bold uppercase text-white ring-2 ring-canvas">
+                {me.email.charAt(0)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-ink-2" title={me.email}>{me.email}</div>
+                <div className="truncate text-[10px] text-ink-3">{role}{orgLabel ? ` · ${orgLabel}` : ""}</div>
+              </div>
+              <button type="button" aria-label="Sign out" title="Sign out"
+                onClick={async () => { await api("/api/v1/auth/logout", { method: "POST", body: {} }); router.replace("/login"); }}
+                className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-white/[0.08] hover:text-ink">
+                <LogOut className="size-3.5" aria-hidden />
               </button>
             </div>
           </div>
         </div>
       </aside>
 
-      {open && <button aria-label="Close menu" className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setOpen(false)} />}
+      {open && <button aria-label="Close navigation" className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm md:hidden" onClick={() => setOpen(false)} />}
 
       <div className="relative min-w-0">
         <div aria-hidden className="app-glow pointer-events-none fixed inset-x-0 top-0 -z-0 h-[480px]" />

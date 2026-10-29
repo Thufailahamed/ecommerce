@@ -41,11 +41,12 @@ export function fieldsFor(tool: StudioTool): { threshold: boolean; consent: bool
 export type BodyResult = { ok: true; body: Record<string, unknown> } | { ok: false; error: string };
 
 /** Builds the request. Only fields that apply to the chosen tool and were filled in are sent, and merchant-supplied facts are checked before a generation is spent. */
-export function buildGenerateBody(f: StudioForm, withFeedback = false): BodyResult {
+export function buildGenerateBody(f: StudioForm, withFeedback = false, campaignId?: string): BodyResult {
   const objective = f.objective.trim();
   if (objective.length < 10) return { ok: false, error: "Describe your goal in at least 10 characters." };
   const use = fieldsFor(f.tool);
   const body: Record<string, unknown> = { objective };
+  if (campaignId) body["campaignId"] = campaignId;
   if (f.tool !== "auto") body["tool"] = f.tool;
   if (use.format && f.format) body["format"] = f.format;
   if (f.constraints.trim()) body["constraints"] = f.constraints.trim();
@@ -65,7 +66,11 @@ export function buildGenerateBody(f: StudioForm, withFeedback = false): BodyResu
       body["privacyUrl"] = f.privacyUrl.trim();
     }
   }
-  if (withFeedback && f.feedback.trim()) body["feedback"] = f.feedback.trim();
+  if (withFeedback) {
+    const feedback = f.feedback.trim();
+    if (!feedback) return { ok: false, error: "Tell the AI what to change first." };
+    body["feedback"] = feedback;
+  }
   return { ok: true, body };
 }
 

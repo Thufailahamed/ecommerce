@@ -46,7 +46,7 @@ function Settings({ store }: { store: Store }) {
 
       <div className="space-y-6">
       <Section icon={Code} title="Install on your storefront" sub="Paste this before </body> on any platform (Shopify theme, WooCommerce, BigCommerce, Magento or custom). Campaigns respect visitor consent: set window.ConvertFlow = { consent: true } after your cookie banner records analytics consent.">
-        <pre className="num overflow-x-auto rounded-xl border border-line bg-canvas/70 p-4 text-xs leading-relaxed text-ink-2">{snippet || "Loading…"}</pre>
+        <pre tabIndex={0} className="num overflow-x-auto rounded-xl border border-line bg-canvas/70 p-4 text-xs leading-relaxed text-ink-2">{snippet || "Loading…"}</pre>
         <div className="flex items-center gap-3">
           <Button onClick={async () => { await navigator.clipboard.writeText(snippet); setCopied(true); setTimeout(() => setCopied(false), 1500); }} disabled={!snippet}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}{copied ? "Copied" : "Copy snippet"}</Button>
           <Badge tone={integ.data?.configPublished ? "ok" : "warn"}>{integ.data?.configPublished ? "Config published" : "Config not published"}</Badge>
@@ -90,7 +90,7 @@ function Settings({ store }: { store: Store }) {
       <BillingSection store={store} isOwner={myRole === "owner"} />
 
       <Section icon={Receipt} title="Track purchases (non-Shopify stores)" sub="On your order-confirmation page, call this once. It is sent only when the visitor has consented to analytics. Shopify stores use the checkout pixel instead.">
-        <pre className="num overflow-x-auto rounded-xl border border-line bg-canvas/70 p-4 text-xs leading-relaxed text-ink-2">{`window.ConvertFlow && window.ConvertFlow.trackPurchase &&
+        <pre tabIndex={0} className="num overflow-x-auto rounded-xl border border-line bg-canvas/70 p-4 text-xs leading-relaxed text-ink-2">{`window.ConvertFlow && window.ConvertFlow.trackPurchase &&
   window.ConvertFlow.trackPurchase({ orderId: "1001", total: 59.9, currency: "USD" });`}</pre>
       </Section>
 

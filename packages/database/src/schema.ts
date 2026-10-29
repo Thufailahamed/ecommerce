@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const id = () => text("id").primaryKey();
 const createdAt = () => text("created_at").notNull();
@@ -191,6 +191,36 @@ export const campaignVersions = sqliteTable("campaign_versions", {
   source: text("source", { enum: ["manual", "ai", "rollback"] }).notNull().default("manual"),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("campaign_versions_uq").on(t.campaignId, t.version)]);
+
+/* ---------- campaign groups and saved templates ---------- */
+
+/** A merchant's own grouping of campaigns, e.g. "Black Friday". Groups never affect what storefronts serve. */
+export const campaignGroups = sqliteTable("campaign_groups", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("campaign_groups_name_uq").on(t.storeId, t.name)]);
+
+/** A campaign can sit in several groups. Deleting either side removes the link only. */
+export const campaignGroupMembers = sqliteTable("campaign_group_members", {
+  groupId: text("group_id").notNull().references(() => campaignGroups.id, { onDelete: "cascade" }),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  storeId: text("store_id").notNull(),
+  addedAt: text("added_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.groupId, t.campaignId] }), index("campaign_group_members_campaign_idx").on(t.campaignId)]);
+
+/** A reusable draft saved from a campaign. Holds the config only: never versions, status or analytics. */
+export const campaignTemplates = sqliteTable("campaign_templates", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  config: text("config", { mode: "json" }).$type<unknown>().notNull(),
+  sourceCampaignId: text("source_campaign_id"),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+}, (t) => [index("campaign_templates_store_idx").on(t.storeId)]);
 
 /* ---------- analytics ---------- */
 

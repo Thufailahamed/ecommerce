@@ -10,7 +10,10 @@
   "vars": {
     "ALLOWED_ORIGIN": "https://convertflow-web.thufailahamed627.workers.dev",
     "API_ORIGIN": "https://convertflow-api.thufailahamed627.workers.dev",
-    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    // Cheap, strong default. AI Gateway provides caching/observability and a stable route for model changes.
+    // "default" is auto-created by AI Gateway on the first authenticated request; use a named gateway if preferred.
+    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "AI_GATEWAY_ID": "default"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "convertflow", "database_id": "e9f41fa4-5a92-469a-8890-ab7be3d8e007", "migrations_dir": "../../packages/database/migrations" }
