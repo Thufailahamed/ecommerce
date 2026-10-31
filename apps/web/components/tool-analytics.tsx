@@ -88,7 +88,7 @@ function ToolSection({ r, currency }: { r: ToolRollup; currency: string }) {
           )}
           <div className="mt-6 overflow-hidden rounded-2xl border border-line">
             <div className="overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr:hover]:bg-white/[0.025] [&_td]:px-4 [&_td]:py-3 [&_th]:bg-white/[0.02] [&_th]:px-4 [&_th]:py-3">
+            <table className="w-full min-w-[32rem] text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr:hover]:bg-ink/[0.025] [&_td]:px-4 [&_td]:py-3 [&_th]:bg-ink/[0.02] [&_th]:px-4 [&_th]:py-3">
               <caption className="sr-only">{meta.name} by campaign</caption>
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3">

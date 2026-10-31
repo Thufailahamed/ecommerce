@@ -2,7 +2,10 @@ import type { CampaignConfig } from "@convertflow/contracts";
 
 type Cfg = CampaignConfig;
 
-export type EditorTool = "toast" | "feed" | "email" | "upsell";
+export type EditorTool = "toast" | "feed" | "email" | "upsell" | "sms";
+
+/** A starting point only: the merchant must have it reviewed for the countries they sell into. */
+export const SMS_CONSENT_DEFAULT = "I agree to receive recurring automated marketing text messages from this store at the number I provide. Consent is not a condition of purchase. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.";
 
 export const defaultConfig = (tool?: EditorTool): Cfg => {
   const base: Cfg = {
@@ -26,6 +29,15 @@ export const defaultConfig = (tool?: EditorTool): Cfg => {
         consentText: "I agree to receive marketing emails from this store. I can unsubscribe at any time.",
         consentCheckbox: true, privacyUrl: "/policies/privacy-policy", doubleOptIn: true,
         successMessage: "Thanks. You're signed up.", pendingMessage: "Check your inbox to confirm your subscription.",
+      } };
+  }
+  if (tool === "sms") {
+    return { ...base, name: "New SMS signup", tool: "sms", format: "popup", goal: { type: "subscribe" },
+      creative: { ...base.creative, headline: "Get offers by text", body: "Be first to hear about drops and deals.", ctaLabel: "Text me", ctaUrl: "/" },
+      form: {
+        collect: { email: false, phone: true, firstName: false }, defaultCountry: "US",
+        consentText: SMS_CONSENT_DEFAULT, consentCheckbox: true, privacyUrl: "/policies/privacy-policy", doubleOptIn: true,
+        successMessage: "Thanks. You're signed up for texts.", pendingMessage: "Enter the code we texted you.",
       } };
   }
   if (tool === "upsell") {

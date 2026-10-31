@@ -1,13 +1,19 @@
 {%- comment -%}
   App embed: loads the ConvertFlow storefront script on every page once the merchant switches it on
   in Theme editor > App embeds. No theme files are edited. UNVERIFIED against a live theme.
+  The app writes the site key and origins into its app-data metafields on install (services/shopify-app.ts
+  runStorefrontSetup), so nothing has to be pasted. The block settings stay as manual overrides.
 {%- endcomment -%}
-{%- if block.settings.site_key != blank -%}
+{%- assign cf = app.metafields.convertflow -%}
+{%- assign cf_site = block.settings.site_key | default: cf.site_key.value -%}
+{%- assign cf_sdk = block.settings.sdk_url | default: cf.sdk_url.value | default: 'https://sdk.example.com/cf.js' -%}
+{%- assign cf_api = block.settings.api_url | default: cf.api_url.value | default: 'https://api.example.com' -%}
+{%- if cf_site != blank -%}
   <script
     async
-    src="{{ block.settings.sdk_url | default: 'https://sdk.example.com/cf.js' }}"
-    data-site="{{ block.settings.site_key | escape }}"
-    data-api="{{ block.settings.api_url | default: 'https://api.example.com' }}"
+    src="{{ cf_sdk | escape }}"
+    data-site="{{ cf_site | escape }}"
+    data-api="{{ cf_api | escape }}"
   ></script>
 {%- endif -%}
 
@@ -16,7 +22,7 @@
   "name": "ConvertFlow campaigns",
   "target": "body",
   "settings": [
-    { "type": "text", "id": "site_key", "label": "Site key", "info": "Copy from ConvertFlow > Settings > Install" },
+    { "type": "text", "id": "site_key", "label": "Site key (optional)", "info": "Filled in automatically by the app. Only set this to override it." },
     { "type": "text", "id": "sdk_url", "label": "Script URL (advanced)" },
     { "type": "text", "id": "api_url", "label": "API URL (advanced)" }
   ]

@@ -16,6 +16,7 @@
     "@convertflow/campaign-engine": "workspace:*",
     "@convertflow/contracts": "workspace:*",
     "@convertflow/integrations": "workspace:*",
+    "@convertflow/store-builder": "workspace:*",
     "@convertflow/storefront-sdk": "workspace:*",
     "@opennextjs/cloudflare": "^1.20.13",
     "clsx": "^2.1.1",

@@ -56,7 +56,7 @@ export function ImageCards() {
         </div>
         <ul aria-label="At a glance" className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
           {([[LayoutTemplate, "3 formats", "popup, slide-in and bar"], [Sparkles, "AI drafts", "from your real catalog"], [ShieldCheck, "Policy checks", "before you ever see a draft"], [Code2, "Runs locally", "no AI call on your storefront"]] as const).map(([Icon, v, l], i) => (
-            <Reveal as="li" key={v} delay={i * 80} className="spot rounded-[1.25rem] bg-surface p-5 ring-1 ring-white/5 transition-colors hover:ring-brand-tint">
+            <Reveal as="li" key={v} delay={i * 80} className="spot rounded-[1.25rem] bg-surface p-5 shadow-[var(--shadow-card)] ring-1 ring-line transition-all hover:-translate-y-1 hover:ring-brand-tint">
               <span className="grid size-10 place-items-center rounded-xl bg-brand-soft"><Icon className="size-5 text-brand" aria-hidden /></span>
               <div className="mt-4 font-display text-xl font-bold">{v}</div>
               <p className="mt-1 text-[13px] text-ink-3">{l}</p>
@@ -115,9 +115,9 @@ function MiniCard({ title, sub }: { title: string; sub: string }) {
 export function IntegrationStrip() {
   const names = ["Shopify", "WooCommerce", "BigCommerce", "Magento", "Any website", "Klaviyo", "Mailchimp", "CSV export"];
   return (
-    <div aria-label="Works with" className="border-y border-white/10 bg-canvas py-6">
+    <div aria-label="Works with" className="border-y border-line bg-canvas py-6">
       <Marquee duration={30}>
-        {names.map((n) => <span key={n} className="flex items-center gap-3 whitespace-nowrap px-8 font-display text-[clamp(1rem,1.6vw,1.375rem)] font-bold uppercase text-white/35"><Store className="size-5" aria-hidden />{n}</span>)}
+        {names.map((n) => <span key={n} className="flex items-center gap-3 whitespace-nowrap px-8 font-display text-[clamp(1rem,1.6vw,1.375rem)] font-bold uppercase text-ink/30"><Store className="size-5" aria-hidden />{n}</span>)}
       </Marquee>
     </div>
   );
@@ -136,7 +136,7 @@ export function About() {
       <Marquee duration={16} className="py-8 text-white md:py-10">
         {[0, 1].map((k) => <span key={k} className="display flex items-center whitespace-nowrap pr-[0.3em] text-[clamp(3rem,8vw,7rem)]">Get to know {BRAND.name} better<Hexagon /></span>)}
       </Marquee>
-      <div className="trap bg-surface pb-24 pt-14 text-white">
+      <div className="trap on-deep bg-surface pb-24 pt-14 text-white">
         <div className="wrap">
           <div className="grid gap-6 md:grid-cols-[14rem_1fr]">
             <p className="eyebrow">About</p>
@@ -185,7 +185,7 @@ export function IndustriesSection() {
 /* ---------- flows (dark) ---------- */
 export function FlowsSection() {
   return (
-    <Panel id="how-it-plays-out" label="How campaigns play out" className="overflow-hidden bg-canvas pb-24 pt-16">
+    <Panel id="how-it-plays-out" label="How campaigns play out" className="on-deep overflow-hidden bg-canvas pb-24 pt-16">
       <div aria-hidden className="glow-orb -left-40 top-20 size-[50vmax] opacity-50" />
       <div className="wrap relative">
         <SectionHead eyebrow="How it plays out" title={<>From first visit to <span className="text-grad">measured result</span></>} sub="Four common goals, step by step, with the guardrails that come built in." />
@@ -376,7 +376,7 @@ export function Engine() {
                   </Reveal>
                 ))}
               </ol>
-              <p className="mt-5 text-[13px] text-black/50">Unknown data never counts as a match: if a cart value or stock status is not available, the rule simply does not pass.</p>
+              <p className="mt-5 text-[13px] text-black/60">Unknown data never counts as a match: if a cart value or stock status is not available, the rule simply does not pass.</p>
             </div>
           </div>
 
@@ -437,21 +437,21 @@ export function Features() {
     [Users, "Teams and two-step sign-in", "Invite colleagues with roles, and protect every account with an authenticator app."],
   ];
   return (
-    <Panel label="All features" className="bg-canvas pb-24 pt-16 text-white">
+    <Panel label="All features" className="bg-paper pb-24 pt-16">
       <div className="wrap">
         <SectionHead eyebrow="Everything included" title={<>Run on-site campaigns <span className="text-grad">well</span></>} sub="Built around control and clarity, not volume." />
-        <div className="mt-14 grid gap-px overflow-hidden rounded-[1.25rem] bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-14 grid gap-px overflow-hidden rounded-[1.25rem] bg-line shadow-[var(--shadow-card)] ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3">
           {items.map(([Icon, t, d], i) => (
-            <div key={t} className="spot group bg-[#0b0d14] p-6 transition-colors duration-300 hover:bg-brand-solid">
+            <div key={t} className="spot group bg-surface p-6 transition-colors duration-300 hover:bg-brand-solid hover:text-white">
               <div className="flex items-center justify-between">
-                <span className="relative grid size-14 place-items-center overflow-hidden rounded-xl bg-brand-soft ring-1 ring-white/10 transition-colors group-hover:bg-white/15">
+                <span className="relative grid size-14 place-items-center overflow-hidden rounded-xl bg-[#0a0c14] ring-1 ring-black/5 transition-colors group-hover:bg-white/15">
                   <BlockScene kind={FEATURE_SCENES[i % FEATURE_SCENES.length]!} tone={i % 2 ? "white" : "blue"} size={16} paused className="absolute inset-0" />
-                  <Icon className="absolute bottom-1 right-1 size-3.5 text-brand transition-colors group-hover:text-white" aria-hidden />
+                  <Icon className="absolute bottom-1 right-1 size-3.5 text-[#8fb0ff] transition-colors group-hover:text-white" aria-hidden />
                 </span>
-                <span className="num text-xs text-white/30 group-hover:text-white/60">{String(i + 1).padStart(2, "0")}</span>
+                <span className="num text-xs text-ink-3 group-hover:text-white/60">{String(i + 1).padStart(2, "0")}</span>
               </div>
               <h3 className="mt-6 font-display text-[15px] font-bold uppercase">{t}</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-white/50 group-hover:text-white/85">{d}</p>
+              <p className="mt-2 text-[14px] leading-relaxed text-ink-2 group-hover:text-white/85">{d}</p>
             </div>
           ))}
         </div>
@@ -510,7 +510,7 @@ export function TryIt() {
 /* ---------- big statement band ---------- */
 export function Statement() {
   return (
-    <Panel label="Launch" className="overflow-hidden bg-surface py-16 md:py-24">
+    <Panel label="Launch" className="overflow-hidden bg-paper py-16 md:py-24">
       <div aria-hidden className="glow-orb -right-40 -top-20 size-[40vmax]" />
       <div className="wrap relative grid items-center gap-10 lg:grid-cols-[1.6fr_1fr]">
         <div>
@@ -519,7 +519,7 @@ export function Statement() {
           </h2></Reveal>
           <div className="mt-10 flex flex-wrap items-center gap-6">
             <Link href="/signup" className="btn btn-primary btn-lg">Start free <ArrowUpRight className="size-4" aria-hidden /></Link>
-            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-[14px] text-white/60">
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-[14px] text-ink-2">
               {["Free plan available", "One script tag, any platform", "AI drafts, you approve", "Roll back in one click"].map((t) => <li key={t} className="flex items-center gap-2"><Check className="size-4 text-brand" strokeWidth={3} aria-hidden />{t}</li>)}
             </ul>
           </div>
@@ -527,7 +527,7 @@ export function Statement() {
         <div aria-hidden className="relative hidden aspect-square lg:block">
           {(["p-sneaker", "p-serum-apply", "p-headphones", "p-chair-blue"] as const).map((p, i) => (
             <div key={p} className="absolute w-[46%]" style={{ left: `${[2, 52, 6, 50][i]}%`, top: `${[2, 10, 52, 58][i]}%`, rotate: `${[-6, 5, 4, -4][i]}deg` }}>
-              <div className="float aspect-square overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/10" style={{ animationDelay: `${i * 0.7}s` }}><Photo k={p} w={500} className="size-full" /></div>
+              <div className="float aspect-square overflow-hidden rounded-2xl shadow-[var(--shadow-lift)] ring-1 ring-black/5" style={{ animationDelay: `${i * 0.7}s` }}><Photo k={p} w={500} className="size-full" /></div>
             </div>
           ))}
           <div className="absolute inset-x-[8%] top-[44%] h-16"><ToastMock text="Campaign approved" sub="v3 is live on your store" /></div>
@@ -557,7 +557,7 @@ export function Pricing() {
                   <h3 className="font-display text-lg font-bold uppercase">{p.id}</h3>
                   {hl && <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-solid">Start here</span>}
                 </div>
-                <div className="mt-8 font-display text-5xl font-bold">${p.priceUsdMonthly}<span className={`ml-1 font-sans text-sm font-medium ${hl ? "text-white/60" : "text-black/50"}`}>/ month</span></div>
+                <div className="mt-8 font-display text-5xl font-bold">${p.priceUsdMonthly}<span className={`ml-1 font-sans text-sm font-medium ${hl ? "text-white/60" : "text-black/60"}`}>/ month</span></div>
                 <ul className={`mt-8 flex-1 space-y-3 border-t pt-6 text-[14px] ${hl ? "border-white/20" : "border-black/10"}`}>
                   {[`${p.maxActiveCampaigns} live campaign${p.maxActiveCampaigns > 1 ? "s" : ""}`, `${p.aiGenerationsPerMonth.toLocaleString("en-US")} AI drafts / month`, `${p.trackedPageviewsPerMonth.toLocaleString("en-US")} tracked pageviews / month`, `${p.maxStores} connected store${p.maxStores > 1 ? "s" : ""}`, ...(p.notificationsPerMonth ? [`${p.notificationsPerMonth.toLocaleString("en-US")} restock alerts / month`] : []), ...(p.experiments ? ["Holdout experiments"] : [])].map((t) => (
                     <li key={t} className="flex gap-2.5"><Check className={`mt-0.5 size-4 shrink-0 ${hl ? "" : "text-brand-solid"}`} strokeWidth={3} aria-hidden /><span>{t}</span></li>
@@ -568,7 +568,7 @@ export function Pricing() {
             );
           })}
         </div>
-        <p className="mt-8 max-w-3xl text-[13px] text-black/50">Every plan includes: {common.join(" · ")}. When a monthly pageview allowance is used up, campaigns pause until the next period or an upgrade.</p>
+        <p className="mt-8 max-w-3xl text-[13px] text-black/60">Every plan includes: {common.join(" · ")}. When a monthly pageview allowance is used up, campaigns pause until the next period or an upgrade.</p>
       </div>
     </Panel>
   );
@@ -589,20 +589,20 @@ export const FAQ: [string, string][] = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-label="FAQ" className="trap relative z-10 rounded-b-[2rem] bg-surface pb-20 pt-16 text-white">
+    <section id="faq" aria-label="FAQ" className="trap relative z-10 rounded-b-[2rem] bg-paper pb-20 pt-16 text-ink">
       <div className="wrap grid gap-12 lg:grid-cols-[1fr_1.4fr]">
         <div>
           <h2 className="h2">FAQ</h2>
-          <p className="mt-6 text-[15px] text-white/50">Still have a question?</p>
+          <p className="mt-6 text-[15px] text-ink-2">Still have a question?</p>
           <Link href="/signup" className="mt-2 inline-flex items-center gap-2 text-[15px] font-semibold text-brand underline-offset-4 hover:underline">Create a free workspace and look around <ArrowDown className="size-4 -rotate-90" aria-hidden /></Link>
         </div>
-        <div className="border-t border-white/10">
+        <div className="border-t border-line-strong">
           {FAQ.map(([q, a]) => (
-            <details key={q} className="group border-b border-white/10">
+            <details key={q} className="group border-b border-line-strong">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-6 text-[clamp(1rem,1.6vw,1.25rem)] font-semibold uppercase [&::-webkit-details-marker]:hidden">
-                {q}<span className="grid size-8 shrink-0 place-items-center rounded-full bg-white/5 transition-all duration-300 group-open:rotate-45 group-open:bg-brand-solid"><Plus className="size-4" aria-hidden /></span>
+                {q}<span className="grid size-8 shrink-0 place-items-center rounded-full bg-ink/5 transition-all duration-300 group-hover:bg-ink/10 group-open:rotate-45 group-open:bg-brand-solid group-open:text-white"><Plus className="size-4" aria-hidden /></span>
               </summary>
-              <p className="max-w-2xl pb-6 leading-relaxed text-white/60">{a}</p>
+              <p className="max-w-2xl pb-6 leading-relaxed text-ink-2">{a}</p>
             </details>
           ))}
         </div>

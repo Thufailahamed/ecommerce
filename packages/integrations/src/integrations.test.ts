@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBigCommerceProduct, normalizeShopifyProduct, normalizeWooProduct, parseCsv, productsFromCsv } from "./index";
+import { normalizeBigCommerceProduct, normalizeShopifyProduct, normalizeWooProduct, normalizeWooVariation, isWooVariable, wooOrderFacts, parseCsv, productsFromCsv } from "./index";
 
 describe("shopify", () => {
   it("maps availability honestly", () => {
@@ -30,6 +30,29 @@ describe("woocommerce", () => {
     expect(p.variants[0]).toEqual({ externalId: "5", price: 12, available: false });
     expect(p.collectionIds).toEqual(["3"]);
     expect(normalizeWooProduct({ id: 6, name: "X", stock_status: "onbackorder" })!.variants[0]?.available).toBeUndefined();
+  });
+
+  it("variable products take their variants from the variations, never from the parent", () => {
+    const parent = { id: 9, name: "Tee", type: "variable", status: "publish", price: "", stock_status: "instock" };
+    const p = normalizeWooProduct(parent, [
+      { id: 91, status: "publish", price: "20", stock_status: "instock", attributes: [{ name: "Size", option: "S" }, { name: "Colour", option: "Red" }] },
+      { id: 92, status: "publish", price: "22", stock_status: "outofstock", attributes: [{ name: "Size", option: "M" }] },
+      { id: 93, status: "private", price: "22", stock_status: "instock", attributes: [] }, // disabled: cannot be bought
+    ])!;
+    expect(isWooVariable(parent)).toBe(true);
+    expect(p.variants).toEqual([{ externalId: "91", title: "S / Red", price: 20, available: true }, { externalId: "92", title: "M", price: 22, available: false }]);
+    // Variations not fetched: no invented variant, so stock already known is left alone.
+    expect(normalizeWooProduct(parent)!.variants).toEqual([]);
+    expect(normalizeWooVariation({ status: "publish" })).toBeNull();
+  });
+
+  it("order facts: id, total, currency and UTC time only; drafts and failed orders are not purchases", () => {
+    const o = { id: 1201, status: "processing", total: "59.90", currency: "eur", date_created_gmt: "2026-10-27T10:00:00", billing: { email: "x@example.com" } };
+    expect(wooOrderFacts(o)).toEqual({ externalOrderId: "1201", total: 59.9, currency: "EUR", placedAt: "2026-10-27T10:00:00.000Z" });
+    expect(JSON.stringify(wooOrderFacts(o))).not.toContain("example.com");
+    for (const status of ["checkout-draft", "failed", "cancelled"]) expect(wooOrderFacts({ ...o, status }), status).toBeNull();
+    expect(wooOrderFacts({ ...o, currency: "" })).toBeNull();
+    expect(wooOrderFacts({ ...o, date_created_gmt: undefined })?.placedAt).toBeNull();
   });
 });
 

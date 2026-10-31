@@ -1,9 +1,12 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
+import { body, limiter, type Ctx, type Vars } from "./lib/http.js";
+import { registerBuilderRoutes } from "./routes/builder.js";
 import { cors } from "hono/cors";
+import { contextStorage } from "hono/context-storage";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
-import { CampaignGroupInput, CampaignTemplateInput, ConsentText, EventBatch, GroupMembersInput, SafeUrl, Tool } from "@convertflow/contracts";
-import { eq } from "drizzle-orm";
+import { CampaignGroupInput, CampaignTemplateInput, ConsentText, EventBatch, GroupMembersInput, SafeUrl, Tool, permissionsFor, type OrganizationPermission, type StorePermission } from "@convertflow/contracts";
+import { and, eq } from "drizzle-orm";
 import { schema } from "@convertflow/database";
 import { HttpError, type Deps } from "./deps.js";
 import * as auth from "./services/auth.js";
@@ -28,6 +31,20 @@ import * as contactSvc from "./services/contacts.js";
 import * as recs from "./services/recommendations.js";
 import * as providerSvc from "./services/providers.js";
 import * as groups from "./services/groups.js";
+import { authorizeOrganization, authorizeStore } from "./services/authz.js";
+import { listAudit, recordAudit } from "./services/audit.js";
+import { entitlementsFor, usageSummary } from "./services/entitlements.js";
+import { checkIntegrationHealth, listIntegrations } from "./services/integrations.js";
+import * as wfs from "./services/workflows.js";
+import { approveActionRequest, listActionRequests, rejectActionRequest } from "./services/actions.js";
+import { requireCapability } from "./services/entitlements.js";
+import { summarizeInsights } from "./services/ai-tasks.js";
+import { planObjective } from "./services/commerce-manager.js";
+import { listDomainEvents, retryDomainEvent } from "./services/domain-events.js";
+import { ProviderError } from "@convertflow/integrations";
+import * as shopifyApp from "./services/shopify-app.js";
+import * as shopifyBilling from "./services/shopify-billing.js";
+import * as woo from "./services/woocommerce.js";
 
 async function verifyTurnstile(d: Deps, token: string | undefined, ip: string | undefined) {
   if (!token) throw new HttpError(400, "captcha_required", "Please complete the verification challenge");
@@ -39,35 +56,10 @@ async function verifyTurnstile(d: Deps, token: string | undefined, ip: string | 
   if (!j?.success) throw new HttpError(400, "captcha_failed", "Verification failed. Please try again.");
 }
 
-type Vars = { user: auth.SessionUser; requestId: string; token: string };
-type Ctx = Context<{ Variables: Vars }>;
-
 const COOKIE = "cf_session";
 const MAX_EVENT_BODY = 64 * 1024;
 
 export interface AppOptions { allowedOrigin: string; secureCookies: boolean }
-
-/** Best-effort per-isolate limiter. Production must also set a Cloudflare rate-limiting rule; this only blunts bursts. */
-function limiter(max: number, windowMs: number) {
-  const hits = new Map<string, { n: number; reset: number }>();
-  return (key: string, now = Date.now()): boolean => {
-    const h = hits.get(key);
-    if (!h || h.reset <= now) { hits.set(key, { n: 1, reset: now + windowMs }); if (hits.size > 5000) hits.clear(); return true; }
-    return ++h.n <= max;
-  };
-}
-
-const MAX_JSON_BODY = 512 * 1024;
-
-async function body<T extends z.ZodType>(c: Ctx, schema: T): Promise<z.infer<T>> {
-  let json: unknown;
-  const text = await c.req.text();
-  if (text.length > MAX_JSON_BODY) throw new HttpError(413, "too_large", "Request body too large");
-  try { json = JSON.parse(text); } catch { throw new HttpError(400, "invalid_json", "Request body must be valid JSON"); }
-  const r = schema.safeParse(json);
-  if (!r.success) throw new HttpError(422, "validation_failed", "Request validation failed", r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })));
-  return r.data;
-}
 
 export function createApp(d: Deps, opts: AppOptions) {
   const app = new Hono<{ Variables: Vars }>();
@@ -75,11 +67,13 @@ export function createApp(d: Deps, opts: AppOptions) {
   const forgotLimit = limiter(5, 60_000);
   const restockLimit = limiter(10, 60_000);
   const subscribeLimit = limiter(10, 60_000);
+  const smsCodeLimit = limiter(10, 60_000); // code checks, per site and address and per number; Twilio caps attempts per code as well
   const providerLimit = limiter(20, 60_000); // each of these calls the provider's API with the merchant's key
   const aiLimit = limiter(10, 60_000);
   const eventLimit = limiter(120, 60_000);
   const recLimit = limiter(120, 60_000);
 
+  app.use("*", contextStorage()); // lets audit and platform events read the request id (lib/request-context.ts)
   app.use("*", async (c, next) => {
     const id = c.req.header("cf-ray") ?? crypto.randomUUID();
     c.set("requestId", id);
@@ -102,7 +96,11 @@ export function createApp(d: Deps, opts: AppOptions) {
   app.use("/api/v1/notifications/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"], allowHeaders: ["content-type"], maxAge: 600 }));
   // Recommendations are read by storefront browsers on arbitrary domains, without credentials.
   app.use("/api/v1/recommendations", cors({ origin: "*", allowMethods: ["GET", "OPTIONS"], allowHeaders: ["content-type"], maxAge: 600 }));
-  const serverToServer = (p: string) => p.startsWith("/api/v1/events/") || p.startsWith("/api/v1/webhooks/") || p.startsWith("/api/v1/notifications/") || p === "/api/v1/recommendations";
+  // Published AI-built stores: read by the storefront's server renderer and by shoppers' browsers, never with credentials.
+  app.use("/api/v1/storefront/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"], allowHeaders: ["content-type"], maxAge: 600 }));
+  const serverToServer = (p: string) => p.startsWith("/api/v1/events/") || p.startsWith("/api/v1/webhooks/") || p.startsWith("/api/v1/notifications/") || p === "/api/v1/recommendations" || p.startsWith("/api/v1/storefront/")
+    // WooCommerce posts approved API keys here from the store server (no cookie, no browser origin); see services/woocommerce.ts.
+    || p === "/api/v1/woocommerce/callback";
   app.use("/api/v1/*", async (c, next) => (serverToServer(c.req.path) ? next() : appCors(c, next)));
 
   // CSRF defence for cookie auth: state-changing app requests must come from the app origin.
@@ -242,6 +240,11 @@ export function createApp(d: Deps, opts: AppOptions) {
   // /billing/plans is public (it is the pricing table); everything else about billing is per-account.
   app.use("/api/v1/billing/subscription", requireAuth);
   app.use("/api/v1/billing/checkout", requireAuth);
+  app.use("/api/v1/sites", requireAuth);
+  app.use("/api/v1/sites/*", requireAuth);
+  app.use("/api/v1/shopify/claim", requireAuth);
+  app.use("/api/v1/billing/shopify/subscribe", requireAuth);
+  app.use("/api/v1/billing/shopify/cancel", requireAuth);
 
   app.post("/api/v1/auth/logout", async (c) => { await auth.logout(d, c.get("token")); deleteCookie(c, COOKIE, { path: "/" }); return c.body(null, 204); });
   app.get("/api/v1/auth/me", async (c) => {
@@ -261,25 +264,32 @@ export function createApp(d: Deps, opts: AppOptions) {
     return c.json({ data: { id: s.id, siteKey: s.siteKey, domain: s.domain, platform: s.platform } }, 201);
   });
 
-  const access = (c: Ctx, min: auth.Role) => auth.requireStore(d, c.get("user"), c.req.param("storeId") ?? "", min);
+  // Every store route goes through the permission catalog (packages/contracts/src/permissions.ts); the URL's store id is never trusted.
+  const actor = (c: Ctx) => ({ type: "user" as const, userId: c.get("user").userId, email: c.get("user").email });
+  const access = (c: Ctx, permission: StorePermission) => authorizeStore(d, actor(c), c.req.param("storeId") ?? "", permission);
+  const orgAccess = (c: Ctx, organizationId: string, permission: OrganizationPermission) => authorizeOrganization(d, actor(c), organizationId, permission);
 
   app.get("/api/v1/stores/:storeId", async (c) => {
-    const { store, role } = await access(c, "viewer");
-    return c.json({ data: { id: store.id, name: store.name, platform: store.platform, domain: store.domain, siteKey: store.siteKey, currency: store.currency, deliveryEnabled: store.deliveryEnabled, role } });
+    const { store, role } = await access(c, "store.read");
+    return c.json({ data: { id: store.id, name: store.name, platform: store.platform, domain: store.domain, siteKey: store.siteKey, currency: store.currency, deliveryEnabled: store.deliveryEnabled, role, permissions: permissionsFor(role) } });
   });
   app.patch("/api/v1/stores/:storeId/delivery", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "store.settings.update");
     const b = await body(c, z.object({ enabled: z.boolean() }));
     await stores.setDelivery(d, c.get("user"), store.id, b.enabled);
     return c.body(null, 204);
   });
   app.delete("/api/v1/stores/:storeId", async (c) => {
-    const { store } = await access(c, "owner");
+    const { store } = await access(c, "store.disconnect");
+    // Release the platform side first, while the stored credentials still exist: uninstall the Shopify app, delete the
+    // WooCommerce webhooks. Both are best effort; the store stops serving either way.
+    if (store.platform === "shopify") await shopifyApp.uninstallFromShop(d, store);
+    if (store.platform === "woocommerce") await woo.disconnectWoo(d, c.get("user").userId, store).catch(() => undefined);
     await stores.disconnectStore(d, c.get("user"), store.id);
     return c.body(null, 204);
   });
   app.get("/api/v1/stores/:storeId/integration", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "store.read");
     const cfg = await d.kv.get(`config:${store.siteKey}`);
     const [{ n } = { n: 0 }] = [{ n: (await catalog.listProducts(d, store.id, 1)).length }];
     return c.json({ data: {
@@ -291,40 +301,191 @@ export function createApp(d: Deps, opts: AppOptions) {
 
   // Margin guardrail: null turns promotions off for the store; a number caps any campaign's discount.
   app.patch("/api/v1/stores/:storeId/settings", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "store.settings.update");
     const b = await body(c, z.object({ maxDiscountPercent: z.number().int().min(1).max(90).nullable() }));
     await d.db.update(schema.stores).set({ maxDiscountPercent: b.maxDiscountPercent, updatedAt: d.now().toISOString() }).where(eq(schema.stores.id, store.id));
-    await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId: store.id, actorId: c.get("user").userId, action: "store.max_discount_set", targetType: "store", targetId: store.id, createdAt: d.now().toISOString() });
+    await recordAudit(d, { action: "store.max_discount_set", actorId: c.get("user").userId, storeId: store.id, organizationId: store.organizationId, targetType: "store", targetId: store.id, summary: { maxDiscountPercent: b.maxDiscountPercent } });
     return c.body(null, 204);
   });
 
   app.post("/api/v1/stores/:storeId/integration/connect", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "integrations.manage");
     const b = await body(c, z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("woocommerce"), consumerKey: z.string().min(8).max(200), consumerSecret: z.string().min(8).max(200) }),
       z.object({ kind: z.literal("bigcommerce"), storeHash: z.string().min(3).max(20), accessToken: z.string().min(8).max(300) }),
     ]));
-    await sync.connectCatalog(d, store, b);
+    await sync.connectCatalog(d, c.get("user"), store, b);
     return c.json({ data: await sync.connectionStatus(d, store.id) });
   });
   app.post("/api/v1/stores/:storeId/integration/sync", async (c) => {
-    const { store } = await access(c, "editor");
-    const b = await body(c, z.object({ page: z.number().int().min(1).max(200).default(1) }));
+    const { store } = await access(c, "catalog.write");
+    // WooCommerce and BigCommerce page by number; Shopify's Admin API pages by cursor. The caller passes back what it got.
+    const b = await body(c, z.object({ page: z.number().int().min(1).max(woo.WOO_MAX_PAGE).default(1), cursor: z.string().min(1).max(500).nullable().optional() }));
+    if (store.platform === "shopify") {
+      const r = await shopifyApp.syncShopifyPage(d, store, b.cursor ?? null);
+      if (r.restocked.length) await notifyRestock(d, store.id, r.restocked);
+      return c.json({ data: { imported: r.imported, created: r.created, updated: r.updated, truncatedVariants: r.truncatedVariants, nextPage: null, nextCursor: r.nextCursor } });
+    }
     const r = await sync.syncCatalogPage(d, store, b.page);
     if (r.restocked.length) await notifyRestock(d, store.id, r.restocked);
     return c.json({ data: { imported: r.imported, created: r.created, updated: r.updated, nextPage: r.nextPage } });
   });
 
+  /* ---------- Shopify app: install, claim, status ---------- */
+
+  // The App URL Shopify opens on install and on every launch from the Shopify admin (signed by Shopify).
+  app.get("/api/v1/shopify/install", async (c) => c.redirect(await shopifyApp.handleAppLaunch(d, c.req.query()), 302));
+  // OAuth callback. The session cookie (SameSite=Lax) arrives on this top-level navigation, so a dashboard-started install
+  // is completed only for the merchant who started it.
+  app.get("/api/v1/shopify/callback", async (c) => {
+    const token = getCookie(c, COOKIE);
+    const user = token ? await auth.getSessionUser(d, token) : null;
+    return c.redirect(await shopifyApp.completeInstall(d, c.req.query(), user), 302);
+  });
+  app.post("/api/v1/stores/:storeId/shopify/connect", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    const b = await body(c, z.object({ shop: z.string().min(3).max(255) }));
+    return c.json({ data: { authorizeUrl: await shopifyApp.beginInstallForStore(d, c.get("user"), store, b.shop) } });
+  });
+  app.get("/api/v1/stores/:storeId/shopify", async (c) => {
+    const { store } = await access(c, "integrations.read");
+    return c.json({ data: await shopifyApp.installationStatus(d, store) });
+  });
+  // Retry the pixel and theme embed settings (they run on install; Shopify can refuse them, e.g. before new scopes are approved).
+  app.post("/api/v1/stores/:storeId/shopify/setup", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    try { return c.json({ data: await shopifyApp.runStorefrontSetup(d, store) }); }
+    catch (e) { throw e instanceof HttpError ? e : shopifyApp.shopifyHttpError(e); }
+  });
+  // Live: is the app embed switched on in the published theme?
+  app.get("/api/v1/stores/:storeId/shopify/theme-embed", async (c) => {
+    const { store } = await access(c, "integrations.read");
+    return c.json({ data: await shopifyApp.themeEmbedStatus(d, store) });
+  });
+  app.get("/api/v1/shopify/claim", async (c) => {
+    const inst = await shopifyApp.pendingInstall(d, c.req.query("token") ?? "");
+    if (!inst) throw new HttpError(404, "not_found", "This installation link is invalid or has expired. Open the app from your Shopify admin again.");
+    return c.json({ data: { shop: inst.shop, expiresAt: inst.claimExpiresAt } });
+  });
+  app.post("/api/v1/shopify/claim", async (c) => {
+    const b = await body(c, z.object({ token: z.string().min(20).max(200), organizationId: z.string().min(1).max(100) }));
+    return c.json({ data: await shopifyApp.claimInstallation(d, c.get("user"), b.token, b.organizationId) }, 201);
+  });
+
+  /* ---------- WooCommerce: approve keys at the store, verify, webhooks ---------- */
+
+  app.post("/api/v1/stores/:storeId/woocommerce/authorize", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    return c.json({ data: { authorizeUrl: await woo.beginAuthorize(d, c.get("user"), store) } });
+  });
+  // WooCommerce delivers the approved keys from the store server. Authenticated by the single-use state in user_id.
+  app.post("/api/v1/woocommerce/callback", async (c) => {
+    if (!providerLimit(`woocb:${c.req.header("cf-connecting-ip") ?? "x"}`)) throw new HttpError(429, "rate_limited", "Too many requests");
+    const raw = await c.req.text();
+    if (raw.length > 8 * 1024) throw new HttpError(413, "too_large", "Payload too large");
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { throw new HttpError(400, "invalid_json", "Invalid JSON"); }
+    await woo.handleAuthCallback(d, parsed);
+    return c.json({ ok: true });
+  });
+  app.get("/api/v1/stores/:storeId/woocommerce", async (c) => {
+    const { store } = await access(c, "integrations.read");
+    if (store.platform !== "woocommerce") throw new HttpError(409, "wrong_platform", "This store is not registered as WooCommerce");
+    return c.json({ data: await woo.connectionView(d, store) });
+  });
+  app.post("/api/v1/stores/:storeId/woocommerce/setup", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    return c.json({ data: await woo.setupConnection(d, store) });
+  });
+  app.delete("/api/v1/stores/:storeId/woocommerce", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    if (store.platform !== "woocommerce") throw new HttpError(409, "wrong_platform", "This store is not registered as WooCommerce");
+    await woo.disconnectWoo(d, c.get("user").userId, store);
+    return c.body(null, 204);
+  });
+
+  registerBuilderRoutes(app, d, { orgAccess });
+
+  /* ---------- automation workflows (preview: needs the workflows.create capability) ---------- */
+
+  const WorkflowInput = z.object({ name: z.string().trim().min(1).max(80), definition: z.unknown() });
+  const wfAccess = async (c: Ctx, permission: StorePermission) => {
+    const a = await access(c, permission);
+    await requireCapability(d, a.organizationId, "workflows.create");
+    return a;
+  };
+  app.get("/api/v1/stores/:storeId/workflows", async (c) => {
+    const { store } = await wfAccess(c, "workflows.read");
+    return c.json({ data: await wfs.listWorkflows(d, store.id) });
+  });
+  app.post("/api/v1/stores/:storeId/workflows", async (c) => {
+    const { store } = await wfAccess(c, "workflows.manage");
+    const b = await body(c, WorkflowInput);
+    return c.json({ data: await wfs.createWorkflow(d, store.id, c.get("user").userId, b.name, b.definition) }, 201);
+  });
+  app.get("/api/v1/stores/:storeId/workflows/:id", async (c) => {
+    const { store } = await wfAccess(c, "workflows.read");
+    return c.json({ data: await wfs.getWorkflow(d, store.id, c.req.param("id")) });
+  });
+  app.put("/api/v1/stores/:storeId/workflows/:id", async (c) => {
+    const { store } = await wfAccess(c, "workflows.manage");
+    const b = await body(c, WorkflowInput);
+    return c.json({ data: await wfs.updateWorkflowDraft(d, store.id, c.req.param("id"), b.name, b.definition) });
+  });
+  app.post("/api/v1/stores/:storeId/workflows/:id/activate", async (c) => {
+    const { store } = await wfAccess(c, "workflows.manage");
+    const b = await body(c, z.object({ approve: z.literal(true), approvedUpdatedAt: z.string() }));
+    return c.json({ data: await wfs.activateWorkflow(d, store.id, c.req.param("id"), c.get("user").userId, b.approvedUpdatedAt) });
+  });
+  app.post("/api/v1/stores/:storeId/workflows/:id/pause", async (c) => { const { store } = await wfAccess(c, "workflows.manage"); await wfs.setWorkflowStatus(d, store.id, c.req.param("id"), c.get("user").userId, "paused"); return c.body(null, 204); });
+  app.post("/api/v1/stores/:storeId/workflows/:id/archive", async (c) => { const { store } = await wfAccess(c, "workflows.manage"); await wfs.setWorkflowStatus(d, store.id, c.req.param("id"), c.get("user").userId, "archived"); return c.body(null, 204); });
+  app.get("/api/v1/stores/:storeId/workflows/:id/runs", async (c) => {
+    const { store } = await wfAccess(c, "workflows.read");
+    return c.json({ data: await wfs.listRuns(d, store.id, c.req.param("id")) });
+  });
+
+  /* ---------- action requests: the approval queue for workflows and the AI manager ---------- */
+
+  app.get("/api/v1/stores/:storeId/action-requests", async (c) => {
+    const { store } = await access(c, "workflows.read");
+    const q = z.object({ status: z.enum(["pending", "rejected", "executed", "failed", "expired"]).optional(), origin: z.enum(["workflow", "ai"]).optional(), planId: z.string().max(100).optional() }).safeParse(c.req.query());
+    if (!q.success) throw new HttpError(422, "validation_failed", "Invalid query");
+    return c.json({ data: await listActionRequests(d, store.id, q.data) });
+  });
+  // The approver must hold the action's own permission; approveActionRequest checks it.
+  app.post("/api/v1/stores/:storeId/action-requests/:id/approve", async (c) => {
+    const { store } = await access(c, "workflows.read");
+    return c.json({ data: await approveActionRequest(d, { userId: c.get("user").userId }, store.id, c.req.param("id")) });
+  });
+  app.post("/api/v1/stores/:storeId/action-requests/:id/reject", async (c) => {
+    const { store } = await access(c, "workflows.read");
+    await rejectActionRequest(d, { userId: c.get("user").userId }, store.id, c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  /* ---------- integration registry ---------- */
+
+  app.get("/api/v1/stores/:storeId/integrations", async (c) => {
+    const { store } = await access(c, "integrations.read");
+    return c.json({ data: await listIntegrations(d, store) });
+  });
+  app.post("/api/v1/stores/:storeId/integrations/:provider/health", async (c) => {
+    const { store } = await access(c, "integrations.manage");
+    if (!providerLimit(`prv:${store.id}`)) throw new HttpError(429, "rate_limited", "Too many requests");
+    return c.json({ data: await checkIntegrationHealth(d, store, c.req.param("provider")) });
+  });
+
   /* ---------- catalog ---------- */
 
   app.get("/api/v1/stores/:storeId/products", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "catalog.read");
     return c.json({ data: await catalog.listProducts(d, store.id) });
   });
   app.post("/api/v1/stores/:storeId/products/import", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "catalog.write");
     const b = await body(c, z.object({ products: z.array(catalog.CatalogProductInput).min(1).max(catalog.MAX_IMPORT) }));
     const r = await catalog.upsertProducts(d, store.id, b.products);
+    await catalog.announceCatalogChange(d, store.id, "import", newId("imp"), r);
     const alerts = r.restocked.length ? await notifyRestock(d, store.id, r.restocked) : { sent: 0 };
     return c.json({ data: { created: r.created, updated: r.updated, restocked: r.restocked.length, alertsSent: alerts.sent } });
   });
@@ -332,11 +493,11 @@ export function createApp(d: Deps, opts: AppOptions) {
   /* ---------- product relationships (upsell) ---------- */
 
   app.get("/api/v1/stores/:storeId/relationships", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "catalog.read");
     return c.json({ data: await recs.listRelationships(d, store.id, c.req.query("productId") || undefined) });
   });
   app.post("/api/v1/stores/:storeId/relationships", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "catalog.write");
     const b = await body(c, z.object({
       productId: z.string().min(1).max(100), relatedProductId: z.string().min(1).max(100),
       kind: z.enum(["complement", "alternative"]), weight: z.number().int().min(0).max(1000).default(0),
@@ -345,7 +506,7 @@ export function createApp(d: Deps, opts: AppOptions) {
     return c.json({ data: r }, r.created ? 201 : 200);
   });
   app.delete("/api/v1/stores/:storeId/relationships/:id", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "catalog.write");
     if (!(await recs.removeRelationship(d, store.id, c.get("user").userId, c.req.param("id")))) throw new HttpError(404, "not_found", "Link not found");
     return c.body(null, 204);
   });
@@ -353,44 +514,44 @@ export function createApp(d: Deps, opts: AppOptions) {
   /* ---------- campaigns ---------- */
 
   app.get("/api/v1/stores/:storeId/campaigns", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "campaigns.read");
     const q = z.object({ tool: Tool.optional() }).safeParse(c.req.query());
     if (!q.success) throw new HttpError(422, "validation_failed", "tool must be one of toast, feed, upsell, sms, email");
     return c.json({ data: await camp.listCampaigns(d, store.id, q.data.tool) });
   });
   app.post("/api/v1/stores/:storeId/campaigns", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     return c.json({ data: await camp.createCampaign(d, store.id, c.get("user").userId, await body(c, z.unknown())) }, 201);
   });
-  app.get("/api/v1/stores/:storeId/campaigns/:id", async (c) => { const { store } = await access(c, "viewer"); return c.json({ data: await camp.getCampaign(d, store.id, c.req.param("id")) }); });
+  app.get("/api/v1/stores/:storeId/campaigns/:id", async (c) => { const { store } = await access(c, "campaigns.read"); return c.json({ data: await camp.getCampaign(d, store.id, c.req.param("id")) }); });
   app.put("/api/v1/stores/:storeId/campaigns/:id", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     return c.json({ data: await camp.updateDraft(d, store.id, c.req.param("id"), await body(c, z.unknown())) });
   });
   app.post("/api/v1/stores/:storeId/campaigns/validate", async (c) => {
-    await access(c, "viewer");
+    await access(c, "campaigns.read");
     const r = camp.validateDraft(await body(c, z.unknown()));
     return c.json({ data: { valid: r.valid, issues: r.issues, warnings: r.warnings } });
   });
   app.post("/api/v1/stores/:storeId/campaigns/:id/publish", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "campaigns.publish");
     await account.requireVerifiedEmail(d, c.get("user").userId);
     const b = await body(c, z.object({ approve: z.literal(true), approvedUpdatedAt: z.string() }));
     return c.json({ data: await camp.publish(d, store.id, c.req.param("id"), c.get("user").userId, b.approvedUpdatedAt) });
   });
-  app.post("/api/v1/stores/:storeId/campaigns/:id/pause", async (c) => { const { store } = await access(c, "editor"); await camp.pause(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
-  app.post("/api/v1/stores/:storeId/campaigns/:id/resume", async (c) => { const { store } = await access(c, "admin"); await camp.resume(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
-  app.post("/api/v1/stores/:storeId/campaigns/:id/archive", async (c) => { const { store } = await access(c, "admin"); await camp.archive(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
-  app.post("/api/v1/stores/:storeId/campaigns/:id/duplicate", async (c) => { const { store } = await access(c, "editor"); return c.json({ data: await camp.duplicate(d, store.id, c.req.param("id"), c.get("user").userId) }, 201); });
-  app.get("/api/v1/stores/:storeId/campaigns/:id/versions", async (c) => { const { store } = await access(c, "viewer"); return c.json({ data: await camp.listVersions(d, store.id, c.req.param("id")) }); });
+  app.post("/api/v1/stores/:storeId/campaigns/:id/pause", async (c) => { const { store } = await access(c, "campaigns.write"); await camp.pause(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
+  app.post("/api/v1/stores/:storeId/campaigns/:id/resume", async (c) => { const { store } = await access(c, "campaigns.publish"); await camp.resume(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
+  app.post("/api/v1/stores/:storeId/campaigns/:id/archive", async (c) => { const { store } = await access(c, "campaigns.publish"); await camp.archive(d, store.id, c.req.param("id"), c.get("user").userId); return c.body(null, 204); });
+  app.post("/api/v1/stores/:storeId/campaigns/:id/duplicate", async (c) => { const { store } = await access(c, "campaigns.write"); return c.json({ data: await camp.duplicate(d, store.id, c.req.param("id"), c.get("user").userId) }, 201); });
+  app.get("/api/v1/stores/:storeId/campaigns/:id/versions", async (c) => { const { store } = await access(c, "campaigns.read"); return c.json({ data: await camp.listVersions(d, store.id, c.req.param("id")) }); });
   app.post("/api/v1/stores/:storeId/campaigns/:id/rollback", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "campaigns.publish");
     const b = await body(c, z.object({ versionId: z.string() }));
     return c.json({ data: await camp.rollback(d, store.id, c.req.param("id"), c.get("user").userId, b.versionId) });
   });
 
   app.post("/api/v1/stores/:storeId/campaigns/ai-generate", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "ai.generate");
     await account.requireVerifiedEmail(d, c.get("user").userId);
     if (!aiLimit(`ai:${c.get("user").userId}`)) throw new HttpError(429, "rate_limited", "Too many AI requests");
     const b = await body(c, z.object({
@@ -409,76 +570,110 @@ export function createApp(d: Deps, opts: AppOptions) {
     return c.json({ data: await generateCampaignDraft(d, store, c.get("user").userId, clean) }, 201);
   });
 
+  /* ---------- AI tasks ---------- */
+
+  app.post("/api/v1/stores/:storeId/ai/insights", async (c) => {
+    const { store } = await access(c, "ai.generate");
+    if (!aiLimit(`ai:${c.get("user").userId}`)) throw new HttpError(429, "rate_limited", "Too many AI requests");
+    const b = await body(c, z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) }));
+    return c.json({ data: await summarizeInsights(d, store, c.get("user").userId, b.days) });
+  });
+  // AI Commerce Manager (preview): proposals only. Each one becomes a pending action request; nothing runs here.
+  app.post("/api/v1/stores/:storeId/ai/plans", async (c) => {
+    const { store } = await access(c, "ai.generate");
+    if (!aiLimit(`ai:${c.get("user").userId}`)) throw new HttpError(429, "rate_limited", "Too many AI requests");
+    const b = await body(c, z.object({ objective: z.string().trim().min(10).max(500) }));
+    return c.json({ data: await planObjective(d, store, c.get("user").userId, b.objective) }, 201);
+  });
+
   /* ---------- campaign groups and saved templates ---------- */
 
   app.get("/api/v1/stores/:storeId/campaign-groups", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "campaigns.read");
     return c.json({ data: await groups.listGroups(d, store.id) });
   });
   app.post("/api/v1/stores/:storeId/campaign-groups", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     const b = await body(c, CampaignGroupInput);
     return c.json({ data: await groups.createGroup(d, store.id, b.name) }, 201);
   });
   app.patch("/api/v1/stores/:storeId/campaign-groups/:groupId", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     const b = await body(c, CampaignGroupInput);
     return c.json({ data: await groups.renameGroup(d, store.id, c.req.param("groupId"), b.name) });
   });
   app.delete("/api/v1/stores/:storeId/campaign-groups/:groupId", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     await groups.deleteGroup(d, store.id, c.req.param("groupId"));
     return c.body(null, 204);
   });
   app.post("/api/v1/stores/:storeId/campaign-groups/:groupId/members", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     const b = await body(c, GroupMembersInput);
     return c.json({ data: await groups.addMembers(d, store.id, c.req.param("groupId"), b.campaignIds) });
   });
   app.delete("/api/v1/stores/:storeId/campaign-groups/:groupId/members/:campaignId", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     await groups.removeMember(d, store.id, c.req.param("groupId"), c.req.param("campaignId"));
     return c.body(null, 204);
   });
   app.get("/api/v1/stores/:storeId/campaign-templates", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "campaigns.read");
     return c.json({ data: await groups.listTemplates(d, store.id) });
   });
   app.post("/api/v1/stores/:storeId/campaign-templates", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     const b = await body(c, CampaignTemplateInput);
     return c.json({ data: await groups.saveTemplate(d, store.id, c.get("user").userId, b) }, 201);
   });
   app.delete("/api/v1/stores/:storeId/campaign-templates/:templateId", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     await groups.deleteTemplate(d, store.id, c.req.param("templateId"));
     return c.body(null, 204);
   });
   app.post("/api/v1/stores/:storeId/campaign-templates/:templateId/campaigns", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "campaigns.write");
     return c.json({ data: await groups.campaignFromTemplate(d, store.id, c.get("user").userId, c.req.param("templateId")) }, 201);
   });
 
   /* ---------- analytics & billing ---------- */
 
   app.get("/api/v1/stores/:storeId/analytics", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "analytics.read");
     const q = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(c.req.query());
     if (!q.success) throw new HttpError(422, "validation_failed", "from and to must be YYYY-MM-DD");
     return c.json({ data: await getAnalytics(d, store.id, q.data.from, q.data.to) });
   });
   app.get("/api/v1/stores/:storeId/analytics/tools", async (c) => {
-    const { store } = await access(c, "viewer");
+    const { store } = await access(c, "analytics.read");
     const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), "not a date");
     const q = z.object({ from: day, to: day }).safeParse(c.req.query());
     if (!q.success) throw new HttpError(422, "validation_failed", "from and to must be YYYY-MM-DD");
     if (q.data.from > q.data.to || Date.parse(q.data.to) - Date.parse(q.data.from) > 366 * 86_400_000) throw new HttpError(422, "validation_failed", "from must not be after to, and the range is at most 366 days");
     return c.json({ data: await getToolAnalytics(d, store.id, q.data.from, q.data.to) });
   });
+  const AuditQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), cursor: z.string().max(200).optional() });
   app.get("/api/v1/stores/:storeId/audit", async (c) => {
-    const { store } = await access(c, "admin");
-    const rows = await d.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.storeId, store.id)).limit(100);
-    return c.json({ data: rows });
+    const { store } = await access(c, "audit.read");
+    const q = AuditQuery.safeParse(c.req.query());
+    if (!q.success) throw new HttpError(422, "validation_failed", "Invalid query");
+    const r = await listAudit(d, { storeId: store.id }, q.data);
+    return c.json({ data: r.data, nextCursor: r.nextCursor });
+  });
+
+  /* ---------- platform events (operational status of event delivery) ---------- */
+
+  app.get("/api/v1/stores/:storeId/platform-events", async (c) => {
+    const { store } = await access(c, "operations.read");
+    const q = z.object({ status: z.enum(["pending", "delivered", "failed"]).optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).safeParse(c.req.query());
+    if (!q.success) throw new HttpError(422, "validation_failed", "Invalid query");
+    return c.json({ data: await listDomainEvents(d, store.id, q.data) });
+  });
+  app.post("/api/v1/stores/:storeId/platform-events/:eventId/retry", async (c) => {
+    const { store } = await access(c, "operations.manage");
+    if (!(await retryDomainEvent(d, store.id, c.req.param("eventId")))) throw new HttpError(404, "not_found", "No undelivered event with that id");
+    await recordAudit(d, { action: "platform_event.retried", actorId: c.get("user").userId, storeId: store.id, organizationId: store.organizationId, targetType: "platform_event", targetId: c.req.param("eventId") });
+    return c.json({ data: { retried: true } }, 202);
   });
 
   /* ---------- contacts (shared by the email and SMS tools) ---------- */
@@ -489,7 +684,7 @@ export function createApp(d: Deps, opts: AppOptions) {
     channel: z.enum(["email", "sms"]).optional(), status: z.enum(schema.CONSENT_STATUSES).optional(),
   });
   app.get("/api/v1/stores/:storeId/contacts", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "contacts.read");
     const q = ContactQuery.safeParse(c.req.query());
     if (!q.success) throw new HttpError(422, "validation_failed", "Invalid query");
     const r = await contactSvc.listContacts(d, store.id, q.data);
@@ -497,23 +692,35 @@ export function createApp(d: Deps, opts: AppOptions) {
   });
   // Registered before /:contactId so "export" is never read as an id.
   app.get("/api/v1/stores/:storeId/contacts/export", async (c) => {
-    const { store } = await access(c, "admin");
-    const r = await contactSvc.exportSubscribers(d, store.id);
-    await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId: store.id, actorId: c.get("user").userId, action: "contacts.exported", targetType: "store", targetId: store.id, createdAt: d.now().toISOString() });
-    return new Response(r.csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="subscribers.csv"', "cache-control": "no-store", ...(r.truncated ? { "x-export-truncated": "true" } : {}) } });
+    const { store } = await access(c, "contacts.manage");
+    const q = z.object({ channel: z.enum(["email", "sms"]).default("email") }).safeParse(c.req.query());
+    if (!q.success) throw new HttpError(422, "validation_failed", "channel must be email or sms");
+    const r = await contactSvc.exportSubscribers(d, store.id, q.data.channel);
+    await recordAudit(d, { action: "contacts.exported", actorId: c.get("user").userId, storeId: store.id, organizationId: store.organizationId, targetType: "store", targetId: store.id, summary: { truncated: r.truncated, channel: q.data.channel } });
+    const file = q.data.channel === "sms" ? "sms-subscribers.csv" : "subscribers.csv";
+    return new Response(r.csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${file}"`, "cache-control": "no-store", ...(r.truncated ? { "x-export-truncated": "true" } : {}) } });
   });
   app.get("/api/v1/stores/:storeId/contacts/:contactId", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "contacts.read");
     const contact = await contactSvc.getContact(d, store.id, c.req.param("contactId"));
     if (!contact) throw new HttpError(404, "not_found", "Contact not found");
     return c.json({ data: contact });
   });
+  // An opt-out the merchant received elsewhere (a STOP reply at their SMS provider, an email to support). Suppresses the identifier too.
+  app.post("/api/v1/stores/:storeId/contacts/:contactId/opt-out", async (c) => {
+    const { store } = await access(c, "contacts.manage");
+    const b = await body(c, z.object({ channel: z.enum(["email", "sms"]) }));
+    const id = c.req.param("contactId");
+    if (!(await contactSvc.optOutContact(d, store.id, id, b.channel))) throw new HttpError(404, "not_found", "Contact not found");
+    await recordAudit(d, { action: "contact.opted_out", actorId: c.get("user").userId, storeId: store.id, organizationId: store.organizationId, targetType: "contact", targetId: id, summary: { channel: b.channel } });
+    return c.body(null, 204);
+  });
   app.delete("/api/v1/stores/:storeId/contacts/:contactId", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "contacts.manage");
     const id = c.req.param("contactId");
     const r = await contactSvc.eraseContact(d, store.id, id);
     if (!r.erased) throw new HttpError(404, "not_found", "Contact not found");
-    await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId: store.id, actorId: c.get("user").userId, action: "contact.erased", targetType: "contact", targetId: id, createdAt: d.now().toISOString() });
+    await recordAudit(d, { action: "contact.erased", actorId: c.get("user").userId, storeId: store.id, organizationId: store.organizationId, targetType: "contact", targetId: id });
     // Erased locally either way. A provider that could not be reached is named so the merchant can remove that copy themselves.
     if (r.providerFailures.length) c.header("x-provider-cleanup-failed", r.providerFailures.join(","));
     return c.body(null, 204);
@@ -528,15 +735,15 @@ export function createApp(d: Deps, opts: AppOptions) {
     return p.data;
   };
   const providerAudit = (c: Ctx, storeId: string, action: string, provider: string) =>
-    d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId, actorId: c.get("user").userId, action, targetType: "provider", targetId: provider, createdAt: d.now().toISOString() });
+    recordAudit(d, { action, actorId: c.get("user").userId, storeId, targetType: "provider", targetId: provider });
 
   app.get("/api/v1/stores/:storeId/providers", async (c) => {
-    const { store } = await access(c, "editor");
+    const { store } = await access(c, "contacts.read");
     return c.json({ data: await providerSvc.listProviders(d, store.id) });
   });
   // Connect (apiKey) and/or choose the list (listId). The key is checked against the provider before it is stored and is never returned.
   app.put("/api/v1/stores/:storeId/providers/:provider", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "providers.manage");
     const provider = providerOf(c);
     if (!providerLimit(`prv:${store.id}`)) throw new HttpError(429, "rate_limited", "Too many requests");
     const b = await body(c, z.object({ apiKey: z.string().max(200).optional(), listId: z.string().min(1).max(100).optional(), syncExisting: z.boolean().optional() }).refine((x) => x.apiKey !== undefined || x.listId !== undefined, "Send an apiKey, a listId, or both"));
@@ -548,23 +755,23 @@ export function createApp(d: Deps, opts: AppOptions) {
     return c.json({ data: { provider: view, ...(lists ? { lists } : {}), queued } });
   });
   app.get("/api/v1/stores/:storeId/providers/:provider/lists", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "providers.manage");
     if (!providerLimit(`prv:${store.id}`)) throw new HttpError(429, "rate_limited", "Too many requests");
     return c.json({ data: await providerSvc.checkProvider(d, store.id, providerOf(c)) });
   });
   app.post("/api/v1/stores/:storeId/providers/:provider/check", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "providers.manage");
     const provider = providerOf(c);
     if (!providerLimit(`prv:${store.id}`)) throw new HttpError(429, "rate_limited", "Too many requests");
     await providerSvc.checkProvider(d, store.id, provider);
     return c.json({ data: (await providerSvc.listProviders(d, store.id)).find((p) => p.provider === provider) });
   });
   app.post("/api/v1/stores/:storeId/providers/:provider/retry", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "providers.manage");
     return c.json({ data: { retried: await providerSvc.retryFailed(d, store.id, providerOf(c)) } });
   });
   app.delete("/api/v1/stores/:storeId/providers/:provider", async (c) => {
-    const { store } = await access(c, "admin");
+    const { store } = await access(c, "providers.manage");
     const provider = providerOf(c);
     if (!(await providerSvc.disconnectProvider(d, store.id, provider))) throw new HttpError(404, "not_found", "Not connected");
     await providerAudit(c, store.id, "provider.disconnected", provider);
@@ -575,19 +782,43 @@ export function createApp(d: Deps, opts: AppOptions) {
 
   app.get("/api/v1/billing/subscription", async (c) => {
     const orgId = z.string().min(1).parse(c.req.query("organizationId") ?? "");
-    const org = (await auth.organizationsFor(d, c.get("user").userId)).find((o) => o.id === orgId);
-    if (!org) throw new HttpError(404, "not_found", "Workspace not found");
+    await orgAccess(c, orgId, "billing.read");
     const [sub] = await d.db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId)).limit(1);
-    const period = d.now().toISOString().slice(0, 7);
-    const usage = await d.db.select().from(schema.usageRecords).where(eq(schema.usageRecords.organizationId, orgId));
-    const used = (m: string) => usage.find((u) => u.metric === m && u.period === period)?.count ?? 0;
-    return c.json({ data: { plan: sub?.plan ?? "free", status: sub?.status ?? "active", currentPeriodEnd: sub?.currentPeriodEnd ?? null, usage: { pageviews: used("pageviews"), aiGenerations: used("ai_generations") }, billingConfigured: Boolean(d.secrets?.stripeSecretKey) } });
+    const ent = await entitlementsFor(d, orgId);
+    const usage = await usageSummary(d, orgId, ent.plan);
+    // Shopify Billing applies when the workspace has a store with the Shopify app installed (App Store apps must use it).
+    const shopifyStores = shopifyApp.shopifyConfig(d) ? (await d.db.select({ id: schema.stores.id }).from(schema.stores).innerJoin(schema.shopifyInstallations, eq(schema.shopifyInstallations.storeId, schema.stores.id))
+      .where(and(eq(schema.stores.organizationId, orgId), eq(schema.stores.status, "active"), eq(schema.shopifyInstallations.status, "installed")))).map((r) => r.id) : [];
+    return c.json({ data: {
+      plan: sub?.plan ?? "free", status: sub?.status ?? "active", currentPeriodEnd: sub?.currentPeriodEnd ?? null, provider: sub?.provider ?? null,
+      shopifyBilling: { available: shopifyStores.length > 0, storeIds: shopifyStores },
+      usage: { pageviews: usage.pageviews.used, aiGenerations: usage.ai_generations.used }, billingConfigured: Boolean(d.secrets?.stripeSecretKey),
+      // What the effective plan (free when unpaid) allows this month, and every capability with whether it is held.
+      limits: usage, capabilities: ent.list(),
+    } });
   });
   app.post("/api/v1/billing/checkout", async (c) => {
     const b = await body(c, z.object({ organizationId: z.string(), plan: z.enum(["starter", "growth", "scale"]) }));
-    const org = (await auth.organizationsFor(d, c.get("user").userId)).find((o) => o.id === b.organizationId);
-    if (!org || org.role !== "owner") throw new HttpError(org ? 403 : 404, org ? "forbidden" : "not_found", "Only the workspace owner can change the plan");
+    await orgAccess(c, b.organizationId, "billing.manage");
     return c.json({ data: { url: await stripe.createCheckout(d, b.organizationId, b.plan, c.get("user").email) } });
+  });
+
+  app.post("/api/v1/billing/shopify/subscribe", async (c) => {
+    const b = await body(c, z.object({ organizationId: z.string(), plan: z.enum(["starter", "growth", "scale"]), storeId: z.string().max(100).optional() }));
+    await orgAccess(c, b.organizationId, "billing.manage");
+    return c.json({ data: { confirmationUrl: await shopifyBilling.startShopifySubscription(d, c.get("user").userId, b.organizationId, b.plan, b.storeId) } });
+  });
+  // Shopify sends the merchant back here after they approve or decline. The charge id is only a hint: its state is read from Shopify.
+  app.get("/api/v1/billing/shopify/return", async (c) => {
+    // Public (a top-level redirect from Shopify) and each call asks Shopify: limited so it cannot be used to hammer a shop.
+    if (!providerLimit(`shret:${c.req.header("cf-connecting-ip") ?? "x"}`)) throw new HttpError(429, "rate_limited", "Too many requests");
+    return c.redirect(await shopifyBilling.confirmShopifyReturn(d, c.req.query("store") ?? "", c.req.query("charge_id") ?? ""), 302);
+  });
+  app.post("/api/v1/billing/shopify/cancel", async (c) => {
+    const b = await body(c, z.object({ organizationId: z.string() }));
+    await orgAccess(c, b.organizationId, "billing.manage");
+    await shopifyBilling.cancelShopifySubscription(d, c.get("user").userId, b.organizationId);
+    return c.body(null, 204);
   });
 
   app.delete("/api/v1/auth/account", async (c) => {
@@ -625,8 +856,15 @@ export function createApp(d: Deps, opts: AppOptions) {
     return c.json({ data: await auth.createOrganization(d, c.get("user").userId, b.name) }, 201);
   });
   app.get("/api/v1/organizations/:orgId/team", async (c) => c.json({ data: await team.listTeam(d, c.get("user"), c.req.param("orgId")) }));
+  app.get("/api/v1/organizations/:orgId/audit", async (c) => {
+    await orgAccess(c, c.req.param("orgId"), "organization.audit.read");
+    const q = AuditQuery.safeParse(c.req.query());
+    if (!q.success) throw new HttpError(422, "validation_failed", "Invalid query");
+    const r = await listAudit(d, { organizationId: c.req.param("orgId") }, q.data);
+    return c.json({ data: r.data, nextCursor: r.nextCursor });
+  });
   app.post("/api/v1/organizations/:orgId/invites", async (c) => {
-    await team.requireOrgRole(d, c.get("user"), c.req.param("orgId"), "admin"); // 404/403 first, so outsiders learn nothing
+    await orgAccess(c, c.req.param("orgId"), "team.invite"); // 404/403 first, so outsiders learn nothing
     await account.requireVerifiedEmail(d, c.get("user").userId);
     const b = await body(c, z.object({ email: z.email().max(254), role: z.enum(["admin", "editor", "viewer"]) }));
     return c.json({ data: await team.invite(d, c.get("user"), c.req.param("orgId"), b.email, b.role) }, 201);
@@ -645,8 +883,7 @@ export function createApp(d: Deps, opts: AppOptions) {
 
   app.post("/api/v1/billing/portal", async (c) => {
     const b = await body(c, z.object({ organizationId: z.string() }));
-    const org = (await auth.organizationsFor(d, c.get("user").userId)).find((o) => o.id === b.organizationId);
-    if (!org || org.role !== "owner") throw new HttpError(org ? 403 : 404, org ? "forbidden" : "not_found", "Only the workspace owner can manage billing");
+    await orgAccess(c, b.organizationId, "billing.manage");
     return c.json({ data: { url: await stripe.createPortal(d, b.organizationId) } });
   });
 
@@ -702,6 +939,40 @@ export function createApp(d: Deps, opts: AppOptions) {
   app.get("/api/v1/notifications/subscribe/unsubscribe", unsubContact);
   app.post("/api/v1/notifications/subscribe/unsubscribe", unsubContact); // RFC 8058 one-click
 
+  /* ---------- SMS sign-up (public; the number is confirmed with a texted one-time code) ---------- */
+
+  const smallJson = async (c: Ctx): Promise<unknown> => {
+    const text = await c.req.text();
+    if (text.length > 4096) throw new HttpError(413, "too_large", "Request too large");
+    try { return JSON.parse(text); } catch { throw new HttpError(400, "invalid_json", "Invalid JSON"); }
+  };
+  const Phone = z.string().min(6).max(40);
+  app.post("/api/v1/notifications/sms/subscribe", async (c) => {
+    // `consent` is the ticked box. The words it was ticked for are read from the published form on the server.
+    const p = z.object({ siteId: z.string().max(64), campaignId: z.string().min(1).max(64), phone: Phone, firstName: z.string().max(100).optional(), consent: z.literal(true) }).safeParse(await smallJson(c));
+    if (!p.success) throw new HttpError(422, "validation_failed", "Invalid request");
+    if (!subscribeLimit(`sms:${p.data.siteId}:${c.req.header("cf-connecting-ip") ?? "x"}`)) throw new HttpError(429, "rate_limited", "Too many requests");
+    const r = await contactSvc.startSmsSignup(d, { siteKey: p.data.siteId, campaignId: p.data.campaignId, phone: p.data.phone, firstName: p.data.firstName });
+    // Only a number the provider will not text is reported: it is a fact about the number the shopper typed, not about our data.
+    if (r === "undeliverable") throw new HttpError(422, "phone_undeliverable", "We can't send a text to that number. Check it, including the country code.");
+    return c.json({ ok: true }, 202); // the same answer whether a code was sent, the number is already subscribed, or nothing is collected
+  });
+  app.post("/api/v1/notifications/sms/confirm", async (c) => {
+    const p = z.object({ siteId: z.string().max(64), campaignId: z.string().min(1).max(64), phone: Phone, code: z.string().regex(/^\d{4,10}$/) }).safeParse(await smallJson(c));
+    if (!p.success) throw new HttpError(422, "validation_failed", "Invalid request");
+    const ip = c.req.header("cf-connecting-ip") ?? "x";
+    if (!smsCodeLimit(`smsc:${p.data.siteId}:${ip}`) || !smsCodeLimit(`smsn:${p.data.siteId}:${p.data.phone.replace(/\D/g, "")}`)) throw new HttpError(429, "rate_limited", "Too many attempts. Wait a minute and try again.");
+    let r: Awaited<ReturnType<typeof contactSvc.confirmSmsSignup>>;
+    try { r = await contactSvc.confirmSmsSignup(d, { siteKey: p.data.siteId, campaignId: p.data.campaignId, phone: p.data.phone, code: p.data.code }); }
+    catch (e) {
+      if (e instanceof ProviderError && e.kind === "rate_limited") throw new HttpError(429, "rate_limited", "Too many attempts for this code. Request a new one.");
+      if (e instanceof ProviderError) throw new HttpError(503, "verification_unavailable", "We couldn't check the code right now. Please try again.");
+      throw e;
+    }
+    if (!r) throw new HttpError(422, "invalid_code", "That code is not right or has expired.");
+    return c.json({ ok: true, ...(r.incentive ? { incentive: { code: r.incentive.code, percentOff: r.incentive.percentOff, ...(r.incentive.label ? { label: r.incentive.label } : {}) } } : {}) });
+  });
+
   /* ---------- inbound webhooks (signature-authenticated) ---------- */
 
   app.post("/api/v1/webhooks/shopify", async (c) => {
@@ -715,6 +986,15 @@ export function createApp(d: Deps, opts: AppOptions) {
     const outcome = await handleShopifyWebhook(d, {
       topic: c.req.header("x-shopify-topic") ?? "", shop: c.req.header("x-shopify-shop-domain") ?? "",
       webhookId: c.req.header("x-shopify-webhook-id") ?? c.req.header("x-shopify-event-id") ?? `hash:${await sha256Hex(raw)}`, body: parsed,
+    });
+    return c.json({ ok: true, outcome });
+  });
+
+  app.post("/api/v1/webhooks/woocommerce/:storeId", async (c) => {
+    const raw = await c.req.text();
+    if (raw.length > 1024 * 1024) throw new HttpError(413, "too_large", "Payload too large");
+    const outcome = await woo.handleWooWebhook(d, c.req.param("storeId"), {
+      raw, signature: c.req.header("x-wc-webhook-signature"), topic: c.req.header("x-wc-webhook-topic") ?? "", deliveryId: c.req.header("x-wc-webhook-delivery-id") ?? "",
     });
     return c.json({ ok: true, outcome });
   });

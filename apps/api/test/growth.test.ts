@@ -274,14 +274,14 @@ describe("live catalog sync", () => {
   const creds = { kind: "woocommerce", consumerKey: "ck_aaaaaaaaaaaa", consumerSecret: "cs_bbbbbbbbbbbb" };
 
   it("WooCommerce: pages through the catalog from the store's own domain only", async () => {
-    const t = await woo((url) => new Response(JSON.stringify(url.includes("page=1") ? wooItems(50) : wooItems(3, 50))));
+    const t = await woo((url) => new Response(JSON.stringify(url.includes("page=1") ? wooItems(25) : wooItems(3, 25))));
     expect((await t.c.post(`/api/v1/stores/${t.storeId}/integration/sync`, { page: 1 })).json.error.code).toBe("not_connected");
     expect((await t.c.post(`/api/v1/stores/${t.storeId}/integration/connect`, creds)).json.data).toMatchObject({ connected: true, kind: "woocommerce" });
     const p1 = await t.c.post(`/api/v1/stores/${t.storeId}/integration/sync`, { page: 1 });
-    expect(p1.json.data).toMatchObject({ imported: 50, created: 50, nextPage: 2 });
+    expect(p1.json.data).toMatchObject({ imported: 25, created: 25, nextPage: 2 }); // 25 a page: variable products cost extra requests
     const p2 = await t.c.post(`/api/v1/stores/${t.storeId}/integration/sync`, { page: 2 });
     expect(p2.json.data).toMatchObject({ imported: 3, nextPage: null });
-    expect(await t.env.deps.db.select().from(schema.products)).toHaveLength(53);
+    expect(await t.env.deps.db.select().from(schema.products)).toHaveLength(28);
     for (const c of t.f.calls) {
       expect(new URL(c.url).host).toBe("woo.example.com"); // never a user-supplied host
       expect(c.headers["authorization"]).toBe(`Basic ${btoa("ck_aaaaaaaaaaaa:cs_bbbbbbbbbbbb")}`);
@@ -289,18 +289,17 @@ describe("live catalog sync", () => {
     const [row] = await t.env.deps.db.select().from(schema.integrationCredentials);
     expect(JSON.stringify(row)).not.toContain("cs_bbbbbbbbbbbb"); // encrypted at rest
     const re = await t.c.post(`/api/v1/stores/${t.storeId}/integration/sync`, { page: 1 });
-    expect(re.json.data).toMatchObject({ created: 0, updated: 50 }); // idempotent
+    expect(re.json.data).toMatchObject({ created: 0, updated: 25 }); // idempotent
   });
   it("surfaces rejected credentials and unreachable stores clearly", async () => {
     const rejected = await woo(() => new Response("no", { status: 401 }));
-    await rejected.c.post(`/api/v1/stores/${rejected.storeId}/integration/connect`, creds);
-    expect((await rejected.c.post(`/api/v1/stores/${rejected.storeId}/integration/sync`, { page: 1 })).json.error.code).toBe("credentials_rejected");
+    // Keys are checked against the store before they are stored, so the merchant hears about it when connecting.
+    expect((await rejected.c.post(`/api/v1/stores/${rejected.storeId}/integration/connect`, creds)).json.error.code).toBe("credentials_rejected");
+    expect((await rejected.c.post(`/api/v1/stores/${rejected.storeId}/integration/sync`, { page: 1 })).json.error.code).toBe("not_connected");
     const down = await woo(() => { throw new Error("ECONNREFUSED"); });
-    await down.c.post(`/api/v1/stores/${down.storeId}/integration/connect`, creds);
-    expect((await down.c.post(`/api/v1/stores/${down.storeId}/integration/sync`, { page: 1 })).json.error.code).toBe("catalog_unreachable");
+    expect((await down.c.post(`/api/v1/stores/${down.storeId}/integration/connect`, creds)).json.error.code).toBe("catalog_unreachable");
     const garbage = await woo(() => new Response("<html>", { status: 200 }));
-    await garbage.c.post(`/api/v1/stores/${garbage.storeId}/integration/connect`, creds);
-    expect((await garbage.c.post(`/api/v1/stores/${garbage.storeId}/integration/sync`, { page: 1 })).json.error.code).toBe("catalog_error");
+    expect((await garbage.c.post(`/api/v1/stores/${garbage.storeId}/integration/connect`, creds)).json.error.code).toBe("catalog_error");
   });
   it("enforces platform match and roles, and requires the encryption key", async () => {
     const t = await woo(() => new Response("[]"));

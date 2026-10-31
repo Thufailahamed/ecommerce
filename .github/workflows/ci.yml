@@ -6,7 +6,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       NEXT_PUBLIC_API_URL: http://localhost:8799
       NEXT_PUBLIC_SDK_URL: http://localhost:4000
@@ -16,8 +16,12 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck, unit + integration tests, builds (enforces the SDK size budget)
+      - name: Repository checks (focused tests, control characters, committed secrets, untested migrations, Shopify scope drift)
+        run: pnpm lint
+      - name: Typecheck, unit + integration + contract tests, builds (enforces the SDK size budget)
         run: pnpm verify
+      - name: Migrations apply cleanly to a fresh D1 (wrangler's local D1, the same engine as production)
+        run: pnpm db:check
       - name: Dependency audit
         run: pnpm audit --prod --audit-level=high
       - name: Cloudflare (OpenNext) build of the web app   # needs symlinks: not verifiable on the Windows dev machine
@@ -27,7 +31,7 @@ jobs:
         run: pnpm --filter @convertflow/e2e exec playwright install --with-deps chromium
       - name: Rebuild web with local e2e URLs
         run: pnpm --filter @convertflow/web build
-      - name: End-to-end + accessibility (real Worker runtime, real browser)
+      - name: End-to-end + accessibility (real Worker runtime, real browser, mock Shopify/Twilio/Klaviyo/Resend/AI Gateway)
         run: pnpm e2e
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -254,6 +254,9 @@ test.describe.serial("accessibility and visuals", () => {
     const check = async (path: string) => {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
+      // Entrance animations (the home page's hero fades in after a 1.3 s delay) must settle first, or axe measures text
+      // mid-fade and reports a contrast failure the finished page does not have. Infinite (decorative) loops are skipped.
+      await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => undefined))));
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
       const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
       expect(bad.map((v) => `${path}: ${v.id} (${v.nodes.length}) ${v.help} :: ${v.nodes.slice(0, 6).map((n) => `${n.target.join(" ")} [${(n.any[0]?.data as { fgColor?: string; bgColor?: string; contrastRatio?: number } | undefined)?.fgColor}/${(n.any[0]?.data as { bgColor?: string } | undefined)?.bgColor} ${(n.any[0]?.data as { contrastRatio?: number } | undefined)?.contrastRatio}]`).join(" | ")}`), path).toEqual([]);

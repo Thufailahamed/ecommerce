@@ -19,11 +19,19 @@ export interface Plan {
   experiments: boolean;
   /** Tools that may be published on this plan. Back-in-stock forms are governed by notificationsPerMonth instead. */
   tools: readonly Tool[];
+  /** AI store builder: stores a workspace may keep (drafts and published, not archived). */
+  maxSites: number;
+  /** AI store builder chat turns (a full first build counts as one). */
+  builderMessagesPerMonth: number;
+  /** AI-generated images for built stores. */
+  aiImagesPerMonth: number;
+  /** One-time codes texted to shoppers to confirm an SMS signup (each one costs a verification fee at the SMS provider). */
+  smsVerificationsPerMonth: number;
 }
 
 export const PLANS: Record<PlanId, Plan> = {
-  free: { id: "free", priceUsdMonthly: 0, maxStores: 1, maxActiveCampaigns: 1, aiGenerationsPerMonth: 3, trackedPageviewsPerMonth: 5_000, notificationsPerMonth: 0, experiments: false, tools: ["toast", "feed"] },
-  starter: { id: "starter", priceUsdMonthly: 19, maxStores: 1, maxActiveCampaigns: 5, aiGenerationsPerMonth: 50, trackedPageviewsPerMonth: 25_000, notificationsPerMonth: 0, experiments: false, tools: ["toast", "feed", "email"] },
-  growth: { id: "growth", priceUsdMonthly: 49, maxStores: 3, maxActiveCampaigns: 25, aiGenerationsPerMonth: 300, trackedPageviewsPerMonth: 150_000, notificationsPerMonth: 1_000, experiments: true, tools: ["toast", "feed", "upsell", "sms", "email"] },
-  scale: { id: "scale", priceUsdMonthly: 149, maxStores: 10, maxActiveCampaigns: 50, aiGenerationsPerMonth: 2_000, trackedPageviewsPerMonth: 1_000_000, notificationsPerMonth: 10_000, experiments: true, tools: ["toast", "feed", "upsell", "sms", "email"] },
+  free: { id: "free", priceUsdMonthly: 0, maxStores: 1, maxActiveCampaigns: 1, aiGenerationsPerMonth: 3, trackedPageviewsPerMonth: 5_000, notificationsPerMonth: 0, experiments: false, tools: ["toast", "feed"], maxSites: 1, builderMessagesPerMonth: 30, aiImagesPerMonth: 24, smsVerificationsPerMonth: 0 },
+  starter: { id: "starter", priceUsdMonthly: 19, maxStores: 1, maxActiveCampaigns: 5, aiGenerationsPerMonth: 50, trackedPageviewsPerMonth: 25_000, notificationsPerMonth: 0, experiments: false, tools: ["toast", "feed", "email"], maxSites: 3, builderMessagesPerMonth: 300, aiImagesPerMonth: 150, smsVerificationsPerMonth: 0 },
+  growth: { id: "growth", priceUsdMonthly: 49, maxStores: 3, maxActiveCampaigns: 25, aiGenerationsPerMonth: 300, trackedPageviewsPerMonth: 150_000, notificationsPerMonth: 1_000, experiments: true, tools: ["toast", "feed", "upsell", "sms", "email"], maxSites: 10, builderMessagesPerMonth: 1_500, aiImagesPerMonth: 600, smsVerificationsPerMonth: 500 },
+  scale: { id: "scale", priceUsdMonthly: 149, maxStores: 10, maxActiveCampaigns: 50, aiGenerationsPerMonth: 2_000, trackedPageviewsPerMonth: 1_000_000, notificationsPerMonth: 10_000, experiments: true, tools: ["toast", "feed", "upsell", "sms", "email"], maxSites: 50, builderMessagesPerMonth: 6_000, aiImagesPerMonth: 2_500, smsVerificationsPerMonth: 5_000 },
 };

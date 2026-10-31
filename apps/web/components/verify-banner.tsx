@@ -18,8 +18,8 @@ export function VerifyBanner() {
   }
 
   return (
-    <div role="status" className="flex flex-wrap items-center gap-3 border-b border-warn/40 bg-warn/10 px-5 py-2.5 text-sm md:px-10">
-      <MailWarning className="size-4 shrink-0 text-warn" aria-hidden />
+    <div role="status" className="flex flex-wrap items-center gap-3 border-b border-brand-tint bg-brand-soft px-5 py-2.5 text-sm md:px-10">
+      <MailWarning className="size-4 shrink-0 text-brand" aria-hidden />
       <span className="flex-1">Confirm <span className="font-medium">{me.email}</span> to publish campaigns and use AI drafts.</span>
       {state === "sent" ? <span className="text-ok">Sent. Check your inbox.</span> : state === "error" ? <span className="text-danger">Couldn&apos;t send. Try again.</span> : null}
       {state !== "sent" && <Button busy={state === "busy"} onClick={() => void resend()}>Resend confirmation</Button>}

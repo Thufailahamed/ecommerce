@@ -292,9 +292,11 @@ describe("validateProposal: email signup forms", () => {
 
 describe("validateProposal: sms and tool availability", () => {
   const sms = () => tool("sms", { form: {}, goal: { type: "subscribe" } }, { headline: "Get texts", ctaLabel: "Join" });
-  it("accepts the sms schema but refuses it while the tool is not shipped", () => {
-    expect(SHIPPED_TOOLS.has("sms")).toBe(false);
-    reject(sms(), input({ catalog }), /sms tool is not available/);
+  it("refuses a tool outside the available set, so an unshipped or unentitled tool is never drafted", () => {
+    expect(SHIPPED_TOOLS.has("sms")).toBe(true);
+    let issues = "";
+    try { validateProposal(sms(), input({ catalog }), { allowedTools: new Set<Tool>(["toast", "feed"]) }); } catch (e) { issues = (e as AIValidationError).issues.join("; "); }
+    expect(issues).toMatch(/sms tool is not available/);
   });
   it("builds a phone-only form with the SMS consent template when the tool is allowed", () => {
     const r = validateProposal(sms(), input({ catalog }), { allowedTools: new Set<Tool>(["sms"]) });
@@ -368,8 +370,7 @@ describe("buildPrompt and sanitizeCatalog", () => {
   it("tells the model to build the requested tool, or to choose among available ones", () => {
     expect(buildPrompt(input({ tool: "upsell" })).system).toContain("Build exactly the upsell tool");
     const open = buildPrompt(input());
-    expect(open.system).toContain("Choose ONE tool from: toast, feed, upsell, email");
-    expect(open.system).not.toContain("[sms]");
+    expect(open.system).toContain("Choose ONE tool from: toast, feed, upsell, sms, email");
     expect(open.user).toContain("Suggested tool");
   });
   it("never puts the merchant's consent text or privacy URL in front of the model (the server owns them)", () => {

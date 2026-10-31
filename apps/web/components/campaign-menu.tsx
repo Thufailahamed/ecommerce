@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, MoreHorizontal } from "lucide-react";
 import type { CampaignGroup, CampaignRow } from "@/lib/api";
 
-const item = "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-ink-2 transition-colors hover:bg-white/[0.06] hover:text-ink";
+const item = "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-ink-2 transition-colors hover:bg-ink/[0.06] hover:text-ink";
 const label = "px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3";
 /** Layout effects only run in the browser; this keeps server rendering quiet without a second component. */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -97,7 +97,7 @@ export function CampaignMenu({ campaign, groups, onAction, onToggleGroup, onSave
   return (
     <>
       <button ref={button} type="button" aria-label={`More actions for ${campaign.name}`} aria-expanded={open} aria-haspopup="true" onClick={toggle}
-        className="grid size-8 cursor-pointer place-items-center rounded-lg text-ink-3 transition-colors hover:bg-white/[0.06] hover:text-ink">
+        className="grid size-8 cursor-pointer place-items-center rounded-lg text-ink-3 transition-colors hover:bg-ink/[0.06] hover:text-ink">
         <MoreHorizontal className="size-4" aria-hidden />
       </button>
       {open && pos && typeof document !== "undefined" && createPortal(

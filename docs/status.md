@@ -1,4 +1,125 @@
-# Status (2026-10-28)
+# Status (2026-10-29)
+
+## Store connections: Shopify storefront setup, WooCommerce end to end (2026-10-29, latest)
+
+- **Shopify** (`docs/shopify.md`): on install the app now creates its **web pixel** itself (`webPixelCreate`; an app pixel
+  cannot be added by a merchant, so the earlier "add the pixel under Customer events" step could never have worked) and
+  writes the site key into **app-data metafields** the theme embed reads (no pasting). Settings shows a setup checklist:
+  pixel state with *Retry setup*, a live check of whether the embed is on in the published theme, and a theme-editor link
+  that activates it. New `inventory_levels/update` webhook (stock changes re-read from the Admin API; drives back-in-stock).
+  Disconnecting a Shopify store now uninstalls the app at Shopify. New scopes `read_themes,write_pixels,read_customer_events`
+  (existing installs are asked to reconnect).
+- **WooCommerce** (`docs/woocommerce.md`): one-click connect through WooCommerce's own key approval
+  (`/wc-auth/v1/authorize`), keys checked before they are trusted (pasted keys too), **product and order webhooks** created
+  at the store with a per-store signing secret (verify, dedupe, repair, remove on disconnect), **variable products with
+  their variations**, orders as `order.created` platform events counted once with the plugin's browser report, a live
+  health check, and the **WordPress plugin** (`apps/woocommerce-plugin`: script, exact page data, WP Consent API,
+  purchase reporting). Migration 0014.
+- Hardened while chasing a browser-test failure: two setups running at once (e.g. a double submit) each deleted the
+  other's webhooks as "unknown". Delivery URLs now name the connection so concurrent runs agree on which webhooks are
+  current, disconnect removes every webhook pointing at the store (recorded or not), and the dashboard clears the
+  approval-return parameters so a reload or remount cannot rerun setup (unit test "setup run twice at once"). The browser
+  failure itself turned out to be the test's own locator ("Connect WooCommerce" also matched "Disconnect WooCommerce"),
+  fixed with an exact match; whether setup had actually run twice in that run was not established.
+
+**Verified on 2026-10-29:** `pnpm lint`; `pnpm db:check` (0014 on a fresh local D1); forced `turbo run typecheck test
+build` 26/27 with the storefront SDK's known jsdom worker flake under concurrency (SDK untouched; passed alone, 9/9
+files). Tests: api 410 (+1 skipped; new: woocommerce 13, shopify +5), web 170 (new: woocommerce settings 6, shopify +2),
+integrations 37, contracts 75, database 45 (migration 0014: 3). **Playwright 106/106** (new `woocommerce.spec.ts` 4, the
+Shopify spec now also checks the pixel, prefilled embed settings and live embed state), run with
+`E2E_API_PORT=8809 E2E_STORE_PORT=4010 E2E_MAIL_PORT=4110`. **Not verified:** anything
+against a real Shopify store or a real WordPress/WooCommerce site; the WordPress plugin has never been installed and
+`php -l` was not run (no PHP on this machine; parsed with a JavaScript PHP parser instead).
+
+## Launch round: SMS, Shopify app, billing, hardening (2026-10-29)
+
+Audit first (`docs/launch-readiness-audit.md`), then implementation. The verdict and evidence are in
+`docs/final-verification-report.md`; what remains before launch is in `docs/production-launch-checklist.md`.
+
+- **All six tools are shipped.** SMS signup (`docs/sms.md`): phone form with country codes, Twilio Verify one-time
+  codes, consent proof from the live form, STOP required in the consent wording, Klaviyo SMS sync, merchant-recorded
+  opt-outs, export by channel, metered verifications (Growth 500, Scale 5,000 a month).
+- **Shopify app** (`docs/shopify.md`): OAuth install from the dashboard or the App Store with claim and reinstall,
+  Admin GraphQL catalog sync, uninstall handling, privacy webhooks that act on stored contacts, **Shopify Billing**, and
+  daily catalog and billing reconciliation. Migration 0013.
+- Serving now follows the plan: a downgrade or lapsed payment stops paid tools on the storefront at once without
+  deleting anything; signup forms cannot be published on a deployment that cannot confirm signups.
+- Security review with fixes (`docs/security.md`): a cross-tenant shop-squatting hole (P0), privacy webhooks that
+  ignored stored PII (P0), four P1s.
+- Extension contracts for post-purchase, reviews and loyalty (contracts only; `docs/extension-points.md`).
+- CI: repository checks, a D1 migration check, a manual deploy workflow; per-environment Wrangler configs.
+
+**Verified on 2026-10-29:** `pnpm lint`; forced `turbo run typecheck test build` **27/27, 0 cached**; **1,015** unit and
+integration tests (+1 skipped live probe); all migrations on local D1; backup drill on the current schema (48 tables,
+byte-identical); `pnpm audit` clean; **Playwright 102/102**; load test exact (3,134 events/s locally). **Not verified:** anything against a real
+third-party service or a real Cloudflare account.
+
+## AI store builder (added 2026-10-29)
+
+Describe a store in chat; the AI builds it (brand, theme, catalogue, home/About/FAQ/Contact/Shop pages, images) through
+Cloudflare AI Gateway, the merchant refines it by chat or in a live editor, and publishes it at `/s/<address>` with a
+cart and server-priced checkout (orders recorded, or Stripe Checkout on the merchant's own key). Details:
+`docs/store-builder.md`. New: `packages/store-builder`, `packages/ai/src/gateway.ts`, `apps/api/src/services/builder/*`,
+`apps/api/src/routes/builder.ts`, migration 0012, `apps/web/components/{builder,storefront}`, routes `/app/sites`,
+`/builder/[id]`, `/preview/[siteId]`, `/s/[slug]`.
+
+**Verified on 2026-10-29:** typecheck, unit/integration tests and production builds for every package (`pnpm verify`
+tasks; the storefront SDK's known jsdom worker flake failed once under concurrency and passed 140/140 rerun alone).
+New tests: store-builder 24, ai gateway 6, database migration 0012 (3), API builder 16 (full build pipeline, streaming
+edits, retry, lock, quota, concurrency, versions, publish checklist, published-vs-draft, checkout pricing and tampering,
+Stripe session confirmation, forms, image sniffing, tenancy, plan limits, account deletion takes stores offline), web
+editor 6 and storefront 5. **End to end** (`tests/e2e/builder.spec.ts`, real Worker + production Next build + a mock AI
+Gateway): prompt → streamed build → click-to-select and edit → streamed chat edit → publish blocked by sample
+testimonials → hide → publish → shopper adds to cart and checks out → merchant sees order #1001. Full Playwright suite
+**89/89** (the 88 existing tests plus this one) against the real Worker and a production Next build.
+
+**Not verified:** the live AI Gateway / Workers AI models (no Cloudflare account here; the mock gateway answers with
+scripted output, so real model quality and latency for the build pipeline are untested), live Stripe Checkout,
+migration 0012 on a real D1, and the OpenNext build of the new routes.
+
+## Platform foundation, phases 1-6 (completed 2026-10-29)
+
+Every foundation item in `docs/implementation-roadmap.md` that can be built without a deploy or third-party accounts is
+built and tested:
+
+- **Entitlements and usage**: one capability catalog (`ga` / `preview` / `planned`), per-workspace preview flags
+  (migration 0009), and one metering service. Publishing, capacity, AI, restock and pageview limits go through it.
+- **Integration registry**: built vs planned capabilities and verification state per provider, with live connection
+  status and health checks. Shown on the Operations page.
+- **Dashboard module registry**: navigation by permission and capability. Preview modules appear only for workspaces
+  that hold the capability.
+- **Catalog platform event** `catalog.products_changed`: one per import, sync page or product webhook.
+- **Workflow engine** (preview, `docs/workflow-engine.md`): an action registry, versioned definitions, event and daily
+  triggers, consent-aware conditions, approvals, caps, loop prevention, and run records (migration 0010). Dashboard:
+  **Automations**.
+- **AI platform**: a task registry, an authorised context, one governed and metered path with cost estimates
+  (migration 0011), and an insights summary that may only quote figures from its evidence.
+- **Metric registry** (`docs/analytics-definitions.md`) and the **consent facade** `canContact`.
+- **AI Commerce Manager** (preview): objective → at most five checked proposals → pending approvals → executed on the
+  approver's authority. Dashboard: **AI manager**.
+
+Previews are off by default. Locally: `pnpm dev:feature <email> workflows.create` (or `ai.commerce_manager`), on a
+plan that grants the capability (growth or scale).
+
+**Verified on 2026-10-29 after these changes:** `pnpm verify` **24/24** tasks (typecheck, tests and production builds,
+including `next build` with the new `/app/automations` and `/app/manager` pages). **871 tests**: contracts 65, database
+36, campaign-engine 40, ai 89, integrations 25, storefront-sdk 140, api 333 (+1 skipped live AI probe), web 143. **Not
+run**: Playwright e2e, the load test, the backup drill and `pnpm audit`. Migrations 0008-0011 have not been applied to a
+real D1, and `insights.summarize` and `objective.plan` have only run against a fake model.
+
+## Platform foundation (added 2026-10-29)
+
+- Central permission catalog and authorization: every store route, store creation, billing and invites now go through it.
+- Audit service: workspace id, actor type, correlation id and summary; paginated store and workspace logs.
+- Platform event bus: 9 versioned events, store-then-deliver, per-subscriber retry, an operational status endpoint.
+- Migration 0008.
+- Two bugs fixed: Shopify `products/delete` archived every tenant's product with the same id, and the store audit
+  endpoint returned the oldest rows.
+
+Details are in `docs/platform-audit.md`. After the change, `pnpm verify` passed in every package except the SDK (the
+known jsdom worker-start flake), and the SDK and web tasks then passed when rerun alone. Unit and integration totals:
+contracts 60, database 32, api 306 (+1 skipped), ai 89, campaign-engine 40, integrations 25. Playwright e2e, the load
+test and the backup drill were **not** rerun. Migration 0008 has not been applied to a real D1.
 
 ## Campaign workspace (added 2026-10-28)
 
@@ -23,7 +144,7 @@ The campaign area is now one workspace rather than a list plus a single editor:
 
 The temporary unlimited free-plan override committed on 2026-10-28 was removed. The free plan again enforces its documented limits (1 store, 1 live campaign, 3 AI generations, 5,000 tracked pageviews, toast and feed only), which the pricing page and API tests expect.
 
-## Six-tool expansion: where it stands
+## Six-tool expansion: where it stood (superseded: SMS and upsell have since shipped, see the launch round above)
 
 The platform is being extended from one campaign kind to six tools on one shared engine (see `architecture-v2.md`, `checklist.md`). **Three of the five customer-facing tools are shipped and verified end to end: the toast tool, the notification feed and email signup (capture and export only: nothing is sent from this app).** The upsell and SMS tools are **not built**; their contracts, slot rules, plan entitlements and an API gate that refuses to publish them exist, so nothing half-finished can reach shoppers. The six-tool platform is therefore **not** ready for the commercial beta described in the brief.
 
@@ -83,7 +204,7 @@ Auth (PBKDF2, hashed sessions, CSRF origin check, rate limits, Turnstile, **pass
 - The feed queued its page-view event without flushing, so a shopper who never opened the bell was not counted until the page unloaded. Caught by a unit test, fixed.
 - An e2e "pause everything" step passed vacuously because it counted buttons before the list had loaded. Rewritten to wait for the rows and assert every card shows as paused.
 
-## Launch blockers (need you)
+## Launch blockers (need you) (earlier list; the current one is docs/production-launch-checklist.md. Shopify install, sync and billing are now built, verified against a mock only)
 1. **Cloudflare account**: create D1/KV/Queues (+DLQ), set secrets, deploy 3 Workers, DNS so web and API share a registrable domain (cookie is `SameSite=Lax`), add rate-limiting rules (the in-app limiter is per-isolate only), real `wrangler` ids. See `docs/deployment.md`.
 2. **AI generation has one live end-to-end run (toast) but not all tools.** The default is `@cf/meta/llama-3.3-70b-instruct-fp8-fast` routed through the auto-created AI Gateway `default`; change `AI_GATEWAY_ID` for a named gateway. Run live generations for feed, upsell and email, plus refinement flows, and review quality/cost.
 3. **Stripe** (checkout, portal, webhooks) is tested against fakes/fixtures only. Do a test-mode run with real keys.

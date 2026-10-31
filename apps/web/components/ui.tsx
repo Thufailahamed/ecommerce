@@ -12,8 +12,8 @@ export function Button({ variant = "secondary", busy, className, children, disab
       className={clsx(
         "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-sm font-semibold transition-all duration-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" && "bg-brand-solid text-white shadow-[0_10px_28px_-12px_rgba(35,80,255,1)] hover:bg-brand-solid-hover hover:shadow-[0_0_0_5px_rgba(47,91,255,0.18),0_14px_34px_-12px_rgba(35,80,255,1)]",
-        variant === "secondary" && "border border-line-strong bg-white/[0.03] text-ink hover:border-brand-tint hover:bg-brand-soft",
-        variant === "ghost" && "h-8 px-3 text-ink-2 hover:bg-white/[0.06] hover:text-ink",
+        variant === "secondary" && "border border-line-strong bg-ink/[0.03] text-ink hover:border-brand-tint hover:bg-brand-soft",
+        variant === "ghost" && "h-8 px-3 text-ink-2 hover:bg-ink/[0.06] hover:text-ink",
         variant === "danger" && "border border-danger/40 bg-danger/5 text-danger hover:bg-danger/15",
         className,
       )}
@@ -60,7 +60,7 @@ export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <tex
 export const Select = (p: SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} className={clsx(field, "h-10", p.className)} />;
 
 const tone = {
-  neutral: "bg-white/[0.06] text-ink-2 ring-white/10",
+  neutral: "bg-ink/[0.06] text-ink-2 ring-line",
   ok: "bg-ok/12 text-ok ring-ok/25",
   warn: "bg-warn/12 text-warn ring-warn/25",
   danger: "bg-danger/12 text-danger ring-danger/25",
@@ -146,7 +146,7 @@ export function SectionTitle({ id, children, sub }: { id?: string; children: Rea
 }
 
 /** A table lives inside a card so its header, rows and hover states read as one surface. */
-export const tableClass = "w-full min-w-full text-sm [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-white/[0.025] [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_td]:px-5 [&_td]:py-3.5 [&_th]:px-5 [&_th]:py-3 [&_th]:bg-white/[0.02]";
+export const tableClass = "w-full min-w-full text-sm [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-ink/[0.025] [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_td]:px-5 [&_td]:py-3.5 [&_th]:px-5 [&_th]:py-3 [&_th]:bg-ink/[0.02]";
 
 /** Key number on a card: label, a tinted icon, a large mono value and an optional note. */
 export function Metric({ label, value, note, icon: Icon }: { label: string; value: string; note?: string; icon?: LucideIcon }) {

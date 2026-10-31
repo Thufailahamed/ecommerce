@@ -5,9 +5,9 @@ import { HttpError, type Deps } from "../deps.js";
 import { emailEnabled, templates } from "./email.js";
 import { rollupAvailability } from "./catalog.js";
 import { revokeConsent } from "./contacts.js";
-import { getPlan } from "./stores.js";
+import { entitlementsFor, quota, recordUsage } from "./entitlements.js";
 
-const { subscribers, stores, products, productVariants, suppressionRecords, usageRecords } = schema;
+const { subscribers, stores, products, productVariants, suppressionRecords } = schema;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_PER_RUN = 100;
 const enc = new TextEncoder();
@@ -45,7 +45,7 @@ export async function subscribeRestock(d: Deps, input: { siteKey: string; produc
   if (!EMAIL_RE.test(email) || email.length > 254 || !restockAvailable(d)) return;
   const [store] = await d.db.select().from(stores).where(eq(stores.siteKey, input.siteKey)).limit(1);
   if (!store || store.status !== "active") return;
-  if ((await getPlan(d, store.organizationId)).notificationsPerMonth <= 0) return;
+  if (!(await entitlementsFor(d, store.organizationId)).has("restock.alerts")) return;
   const [product] = await d.db.select().from(products).where(and(eq(products.storeId, store.id), eq(products.externalId, input.productId))).limit(1);
   if (!product) return;
   const [suppressed] = await d.db.select({ id: suppressionRecords.id }).from(suppressionRecords).where(and(eq(suppressionRecords.storeId, store.id), eq(suppressionRecords.emailHash, await emailHash(store.id, email)))).limit(1);
@@ -114,10 +114,7 @@ export async function notifyRestock(d: Deps, storeId: string, onlyProducts?: str
   if (!restockAvailable(d)) return { sent: 0, remaining: 0 };
   const [store] = await d.db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
   if (!store || store.status !== "active") return { sent: 0, remaining: 0 };
-  const plan = await getPlan(d, store.organizationId);
-  const period = d.now().toISOString().slice(0, 7);
-  const [u] = await d.db.select().from(usageRecords).where(and(eq(usageRecords.organizationId, store.organizationId), eq(usageRecords.metric, "notifications"), eq(usageRecords.period, period))).limit(1);
-  let budget = Math.min(MAX_PER_RUN, plan.notificationsPerMonth - (u?.count ?? 0));
+  let budget = Math.min(MAX_PER_RUN, (await quota(d, store.organizationId, "notifications")).remaining);
   if (budget <= 0) return { sent: 0, remaining: 0 };
 
   const subs = await d.db.select().from(subscribers).where(and(eq(subscribers.storeId, storeId), eq(subscribers.status, "confirmed"), ...(onlyProducts ? [inArray(subscribers.productExternalId, onlyProducts)] : [])));
@@ -145,9 +142,6 @@ export async function notifyRestock(d: Deps, storeId: string, onlyProducts?: str
       console.error(JSON.stringify({ level: "error", where: "restock_send", message: e instanceof Error ? e.message : "send failed" }));
     }
   }
-  if (sent > 0) {
-    await d.db.insert(usageRecords).values({ organizationId: store.organizationId, metric: "notifications", period, count: sent })
-      .onConflictDoUpdate({ target: [usageRecords.organizationId, usageRecords.metric, usageRecords.period], set: { count: sql`${usageRecords.count} + ${sent}` } });
-  }
+  if (sent > 0) await recordUsage(d, store.organizationId, "notifications", sent);
   return { sent, remaining };
 }

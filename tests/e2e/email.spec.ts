@@ -87,7 +87,7 @@ test.describe.serial("email signup, end to end", () => {
     await expect(rowOf(m.page, shopperEmail)).toContainText("Waiting to confirm");
     await expect(rowOf(m.page, shopperEmail)).toContainText("Signup form");
 
-    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export subscribed/ }).click()]);
+    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export email subscribers/ }).click()]);
     expect(dl.suggestedFilename()).toBe("subscribers.csv");
     expect(readFileSync((await dl.path())!, "utf8")).not.toContain(shopperEmail);
   });
@@ -109,7 +109,7 @@ test.describe.serial("email signup, end to end", () => {
 
     await m.page.goto("/app/subscribers");
     await expect(rowOf(m.page, shopperEmail)).toContainText("Subscribed");
-    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export subscribed/ }).click()]);
+    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export email subscribers/ }).click()]);
     expect(readFileSync((await dl.path())!, "utf8")).toContain(shopperEmail);
 
     // the proof of consent is the words the shopper saw, kept with the signup
@@ -148,7 +148,7 @@ test.describe.serial("email signup, end to end", () => {
 
     await m.page.goto("/app/subscribers");
     await expect(rowOf(m.page, shopperEmail)).toContainText("Unsubscribed");
-    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export subscribed/ }).click()]);
+    const [dl] = await Promise.all([m.page.waitForEvent("download"), m.page.getByRole("button", { name: /Export email subscribers/ }).click()]);
     expect(readFileSync((await dl.path())!, "utf8")).not.toContain(shopperEmail); // opted out: never exported
 
     await m.page.getByRole("button", { name: `Erase ${shopperEmail}` }).click();

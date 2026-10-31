@@ -1,6 +1,10 @@
 {
-  // Serves dist/cf.js (+ _headers) from Workers static assets. Run `pnpm build` first.
+  // Serves dist/cf.js, the per-tool cf-<tool>.<hash>.js scripts and _headers from Workers static assets. Run `pnpm build` first.
   "name": "convertflow-sdk",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./dist" }
+  "assets": { "directory": "./dist" },
+  "env": {
+    "staging": { "name": "convertflow-sdk-staging", "assets": { "directory": "./dist" } },
+    "production": { "name": "convertflow-sdk-production", "assets": { "directory": "./dist" } }
+  }
 }

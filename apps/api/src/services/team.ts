@@ -3,10 +3,13 @@ import { schema } from "@convertflow/database";
 import { newId, randomToken, sha256Hex } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
 import { emailEnabled, templates } from "./email.js";
+import { ROLE_RANK } from "@convertflow/contracts";
 import type { Role, SessionUser } from "./auth.js";
+import { recordAudit } from "./audit.js";
 
 const { memberships, users, invitations, organizations } = schema;
-const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2, owner: 3 };
+// Member-versus-member rules (who may remove whom) compare roles directly; everything else is a catalog permission.
+const RANK = ROLE_RANK;
 const INVITE_DAYS = 7;
 
 /** 404 for non-members (no existence leak), 403 for members who lack the role. */
@@ -18,7 +21,7 @@ export async function requireOrgRole(d: Deps, user: SessionUser, orgId: string, 
 }
 
 const audit = (d: Deps, orgId: string, actorId: string, action: string, targetId: string) =>
-  d.db.insert(schema.auditLogs).values({ id: newId("aud"), organizationId: orgId, actorId, action, targetType: "member", targetId, createdAt: d.now().toISOString() });
+  recordAudit(d, { action, actorId, organizationId: orgId, targetType: "member", targetId });
 
 export async function listTeam(d: Deps, user: SessionUser, orgId: string) {
   await requireOrgRole(d, user, orgId, "viewer");

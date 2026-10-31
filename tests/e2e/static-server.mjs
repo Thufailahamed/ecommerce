@@ -28,7 +28,7 @@ return new Promise(function(ok){setTimeout(function(){window.__added.push(i.prod
 <body style="font-family:sans-serif"><main><h1>Demo shop</h1><p>Path: ${u.pathname.replace(/[<>&]/g, "")}</p>
 <div data-convertflow-recommendations></div></main>
 ${consent === null && !ctx && !adder ? "" : `<script>${consent === null ? "" : `window.ConvertFlow={consent:${consent === "1"}};`}${ctx}${adder}</script>`}
-<script async src="/cf.js" data-site="${site.replace(/[^\w-]/g, "")}" data-api="http://localhost:8799"></script>
+<script async src="/cf.js" data-site="${site.replace(/[^\w-]/g, "")}" data-api="http://localhost:${process.env.E2E_API_PORT ?? "8799"}"></script>
 <button id="buy" onclick="window.ConvertFlow.trackPurchase({orderId:'E2E-'+Date.now(),total:59.9,currency:'USD'})">Simulate order confirmation</button>
 </body></html>`);
 }).listen(Number(process.env.E2E_STORE_PORT ?? 4000), () => console.log("storefront on", process.env.E2E_STORE_PORT ?? 4000));

@@ -1,11 +1,14 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { schema } from "@convertflow/database";
-import { CampaignConfig, SHIPPED_TOOLS, toolOf, type Tool, type StorefrontConfig } from "@convertflow/contracts";
+import { CampaignConfig, SHIPPED_TOOLS, toolCapability, toolOf, type Tool, type StorefrontConfig } from "@convertflow/contracts";
 import { newId } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
-import { getPlan } from "./stores.js";
+import { entitlementsFor, getPlan, quota } from "./entitlements.js";
 import { restockAvailable } from "./restock.js";
+import { contactCaptureAvailable, smsCaptureAvailable } from "./contacts.js";
 import { putSite } from "./sites.js";
+import { recordAudit, type AuditSummary } from "./audit.js";
+import { publishDomainEvent } from "./domain-events.js";
 
 const { campaigns, campaignVersions, stores } = schema;
 
@@ -30,7 +33,6 @@ function toolWarnings(c: CampaignConfig): string[] {
   const w: string[] = [];
   const tool = toolOf(c);
   if (tool === "sms" && c.form) {
-    if (!/\bSTOP\b/i.test(c.form.consentText)) w.push("The SMS consent text does not mention how to opt out (for example \"Reply STOP to opt out\"). Most jurisdictions and carriers expect it.");
     if (!/msg|message|data|rates/i.test(c.form.consentText)) w.push("The SMS consent text does not mention message frequency or that message and data rates may apply.");
     w.push("SMS consent wording must be reviewed for the countries you sell into before you collect numbers.");
   }
@@ -94,8 +96,9 @@ export async function publish(d: Deps, storeId: string, id: string, actorId: str
   const versionId = newId("ver");
   await d.db.insert(campaignVersions).values({ id: versionId, campaignId: id, storeId, version: m + 1, config: v.config, publishedBy: actorId, source, createdAt: now.toISOString() });
   await d.db.update(campaigns).set({ publishedVersionId: versionId, status: statusFor(v.config, now), updatedAt: now.toISOString() }).where(eq(campaigns.id, id));
-  await audit(d, storeId, actorId, "campaign.published", id);
+  await audit(d, storeId, actorId, "campaign.published", id, { version: m + 1, origin: source });
   await publishConfig(d, storeId);
+  await publishDomainEvent(d, { type: "campaign.published", payload: { campaignId: id, versionId, version: m + 1, tool: toolOf(v.config), origin: source }, idempotencyKey: `campaign.published:${versionId}`, storeId, source: "api" });
   return { versionId, version: m + 1 };
 }
 
@@ -106,19 +109,22 @@ export async function publish(d: Deps, storeId: string, id: string, actorId: str
 export async function assertEntitled(d: Deps, storeId: string, cfg: CampaignConfig) {
   const [s] = await d.db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
   if (!s) throw new HttpError(404, "not_found", "Store not found");
-  const plan = await getPlan(d, s.organizationId);
+  const ent = await entitlementsFor(d, s.organizationId);
   // An explicit tool is a multi-tool campaign. Configs without one are legacy promotions or restock forms and keep their old rules.
   const explicitTool = cfg.tool;
   const legacyRestock = cfg.tool === "email" && cfg.format === "restock";
   if (explicitTool && !legacyRestock) {
     if (!SHIPPED_TOOLS.has(explicitTool)) throw new HttpError(409, "tool_unavailable", `The ${explicitTool} tool is not available yet`);
-    if (!plan.tools.includes(explicitTool)) throw new HttpError(402, "plan_limit", `The ${explicitTool} tool is not included in your plan. Upgrade to publish it.`);
+    if (!ent.has(toolCapability(explicitTool))) throw new HttpError(402, "plan_limit", `The ${explicitTool} tool is not included in your plan. Upgrade to publish it.`);
   }
+  // A form must never collect people it cannot confirm: without delivery it would hold every signup as pending, silently.
+  if (explicitTool === "email" && !legacyRestock && !contactCaptureAvailable(d)) throw new HttpError(409, "email_unavailable", "Email signup needs email delivery (for confirmation messages), which is not configured on this deployment");
+  if (explicitTool === "sms" && !smsCaptureAvailable(d)) throw new HttpError(409, "sms_unavailable", "SMS signup needs phone verification (a texted confirmation code), which is not configured on this deployment");
   if (cfg.format === "restock") {
-    if (plan.notificationsPerMonth <= 0) throw new HttpError(402, "plan_limit", "Back-in-stock alerts are included in the Growth and Scale plans");
+    if (!ent.has("restock.alerts")) throw new HttpError(402, "plan_limit", "Back-in-stock alerts are included in the Growth and Scale plans");
     if (!restockAvailable(d)) throw new HttpError(409, "restock_unavailable", "Back-in-stock alerts need email delivery, which is not configured on this deployment");
   }
-  if (cfg.experiment && !plan.experiments) throw new HttpError(402, "plan_limit", "Holdout experiments are included in the Growth and Scale plans");
+  if (cfg.experiment && !ent.has("experiments.run")) throw new HttpError(402, "plan_limit", "Holdout experiments are included in the Growth and Scale plans");
   if (cfg.promotion) {
     if (s.maxDiscountPercent === null) throw new HttpError(422, "promotion_not_allowed", "Promotions are off for this store. Set a maximum discount in Settings first.");
     if (cfg.promotion.percentOff > s.maxDiscountPercent) throw new HttpError(422, "promotion_exceeds_limit", `This store caps promotions at ${s.maxDiscountPercent}% off. Lower the discount or raise the limit in Settings.`);
@@ -140,9 +146,11 @@ async function assertActiveCapacity(d: Deps, storeId: string) {
 export async function pause(d: Deps, storeId: string, id: string, actorId: string) {
   const c = await load(d, storeId, id);
   if (c.status !== "active" && c.status !== "scheduled") throw new HttpError(409, "not_live", "Only live campaigns can be paused");
-  await d.db.update(campaigns).set({ status: "paused", updatedAt: d.now().toISOString() }).where(eq(campaigns.id, id));
+  const at = d.now().toISOString();
+  await d.db.update(campaigns).set({ status: "paused", updatedAt: at }).where(eq(campaigns.id, id));
   await audit(d, storeId, actorId, "campaign.paused", id);
   await publishConfig(d, storeId);
+  await publishDomainEvent(d, { type: "campaign.paused", payload: { campaignId: id }, idempotencyKey: `campaign.paused:${id}:${at}`, storeId, source: "api" });
 }
 
 export async function resume(d: Deps, storeId: string, id: string, actorId: string) {
@@ -151,16 +159,20 @@ export async function resume(d: Deps, storeId: string, id: string, actorId: stri
   await assertActiveCapacity(d, storeId);
   const [v] = await d.db.select().from(campaignVersions).where(eq(campaignVersions.id, c.publishedVersionId)).limit(1);
   const cfg = CampaignConfig.parse(v?.config);
-  await d.db.update(campaigns).set({ status: statusFor(cfg, d.now()), updatedAt: d.now().toISOString() }).where(eq(campaigns.id, id));
+  const at = d.now().toISOString();
+  await d.db.update(campaigns).set({ status: statusFor(cfg, d.now()), updatedAt: at }).where(eq(campaigns.id, id));
   await audit(d, storeId, actorId, "campaign.resumed", id);
   await publishConfig(d, storeId);
+  await publishDomainEvent(d, { type: "campaign.resumed", payload: { campaignId: id }, idempotencyKey: `campaign.resumed:${id}:${at}`, storeId, source: "api" });
 }
 
 export async function archive(d: Deps, storeId: string, id: string, actorId: string) {
-  await load(d, storeId, id);
+  const c = await load(d, storeId, id);
   await d.db.update(campaigns).set({ status: "archived", updatedAt: d.now().toISOString() }).where(eq(campaigns.id, id));
   await audit(d, storeId, actorId, "campaign.archived", id);
   await publishConfig(d, storeId);
+  // Archiving twice is one outcome: the campaign is not served any more.
+  if (c.status !== "archived") await publishDomainEvent(d, { type: "campaign.archived", payload: { campaignId: id }, idempotencyKey: `campaign.archived:${id}`, storeId, source: "api" });
 }
 
 export async function duplicate(d: Deps, storeId: string, id: string, actorId: string) {
@@ -187,9 +199,8 @@ export async function rollback(d: Deps, storeId: string, id: string, actorId: st
   return publish(d, storeId, id, actorId, now, "rollback").then(async (r) => { await audit(d, storeId, actorId, "campaign.rolled_back", id); return { ...r, status: c.status }; });
 }
 
-async function audit(d: Deps, storeId: string, actorId: string, action: string, targetId: string) {
-  await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId, actorId, action, targetType: "campaign", targetId, createdAt: d.now().toISOString() });
-}
+const audit = (d: Deps, storeId: string, actorId: string, action: string, targetId: string, summary?: AuditSummary) =>
+  recordAudit(d, { action, actorId, storeId, targetType: "campaign", targetId, ...(summary ? { summary } : {}) });
 
 export async function buildStorefrontConfig(d: Deps, storeId: string): Promise<StorefrontConfig> {
   const [s] = await d.db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
@@ -198,17 +209,31 @@ export async function buildStorefrontConfig(d: Deps, storeId: string): Promise<S
     .select({ campaignId: campaigns.id, versionId: campaignVersions.id, config: campaignVersions.config, publishedAt: campaignVersions.createdAt })
     .from(campaigns).innerJoin(campaignVersions, eq(campaignVersions.id, campaigns.publishedVersionId))
     .where(and(eq(campaigns.storeId, storeId), inArray(campaigns.status, ["active", "scheduled"])));
+  // What the workspace's plan allows today. A downgrade or a lapsed payment stops paid tools from being served without
+  // touching the campaigns themselves: they stay live in the dashboard and come back as soon as the plan allows them again.
+  const ent = await entitlementsFor(d, s.organizationId);
   const published = rows.flatMap((r) => {
     const p = CampaignConfig.safeParse(r.config);
-    return p.success ? [{ campaignId: r.campaignId, versionId: r.versionId, config: p.data, publishedAt: r.publishedAt }] : [];
+    if (!p.success) return [];
+    const cfg = p.data;
+    if (cfg.format === "restock") { if (!ent.has("restock.alerts")) return []; }
+    else if (cfg.tool && !ent.has(toolCapability(cfg.tool))) return [];
+    // A holdout needs the experiments entitlement; without it the campaign is shown to everyone rather than hidden from some.
+    const { experiment: _e, ...rest } = cfg;
+    return [{ campaignId: r.campaignId, versionId: r.versionId, config: cfg.experiment && !ent.has("experiments.run") ? rest as CampaignConfig : cfg, publishedAt: r.publishedAt, priority: cfg.priority }];
   });
+  // Over the plan's live-campaign limit (after a downgrade): serve the highest-priority ones, newest first on a tie.
+  const allowed = published.sort((a, b) => b.priority - a.priority || b.publishedAt.localeCompare(a.publishedAt)).slice(0, Math.min(ent.plan.maxActiveCampaigns, 50))
+    .map(({ priority: _p, ...c }) => c);
   // Hard stop when the organisation has used its monthly tracked-pageview allowance.
-  const plan = await getPlan(d, s.organizationId);
-  const [usage] = await d.db.select().from(schema.usageRecords).where(and(
-    eq(schema.usageRecords.organizationId, s.organizationId), eq(schema.usageRecords.metric, "pageviews"),
-    eq(schema.usageRecords.period, d.now().toISOString().slice(0, 7))));
-  const overLimit = (usage?.count ?? 0) >= plan.trackedPageviewsPerMonth;
-  return { schemaVersion: 1, siteId: s.siteKey, generatedAt: d.now().toISOString(), currency: s.currency, deliveryEnabled: s.deliveryEnabled && s.status === "active" && !overLimit, campaigns: published.slice(0, 50) };
+  const overLimit = (await quota(d, s.organizationId, "pageviews", ent.plan)).remaining <= 0;
+  return { schemaVersion: 1, siteId: s.siteKey, generatedAt: d.now().toISOString(), currency: s.currency, deliveryEnabled: s.deliveryEnabled && s.status === "active" && !overLimit, campaigns: allowed };
+}
+
+/** After a plan or payment change: every active store of the workspace serves what the new plan allows, straight away. */
+export async function republishOrganization(d: Deps, organizationId: string): Promise<void> {
+  const rows = await d.db.select({ id: stores.id }).from(stores).where(and(eq(stores.organizationId, organizationId), eq(stores.status, "active")));
+  for (const r of rows) await publishConfig(d, r.id);
 }
 
 /** Writes the edge-served config. The storefront only ever reads this blob. */

@@ -5,13 +5,13 @@ import { readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "nod
 
 // The core script is the only one every page downloads, so it carries the marketing claim. Each tool's renderer is a
 // separate script, fetched the first time a campaign of that tool is eligible. A page that uses every tool downloads
-// the core plus all four; the TOTAL budget keeps that bounded too.
+// the core plus all five; the TOTAL budget keeps that bounded too.
 const BUDGET_CORE_GZIP = 12 * 1024; // fail the build, not a code review, if the core bloats
 const BUDGET_TOTAL_GZIP = 35 * 1024;
 // The marketing site says "under 15 KB". If the core trips this, either slim the SDK or change that copy
 // (apps/web/components/marketing/sections.tsx: FactsBand and FAQ) so the claim stays true.
 const MARKETING_CLAIM_GZIP = 15 * 1024;
-const TOOLS = ["toast", "feed", "upsell", "email"];
+const TOOLS = ["toast", "feed", "upsell", "email", "sms"];
 
 const common = { bundle: true, minify: true, format: "iife", target: "es2019", legalComments: "none", write: false };
 const gz = (b) => gzipSync(b, { level: 9 }).length;

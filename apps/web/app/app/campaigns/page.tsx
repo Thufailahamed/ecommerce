@@ -154,7 +154,7 @@ function List({ store, initialType }: { store: Store; initialType: CampaignType 
           return (
             <button key={t.key} type="button" role="tab" aria-selected={on} disabled={!t.shipped}
               onClick={() => selectFolder(t.key)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-brand-solid text-white shadow-[0_8px_20px_-10px_rgba(35,80,255,1)] ring-brand-tint" : "bg-white/[0.03] text-ink-2 ring-line hover:text-ink hover:ring-line-strong"}`}>
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-brand-solid text-white shadow-[0_8px_20px_-10px_rgba(35,80,255,1)] ring-brand-tint" : "bg-ink/[0.03] text-ink-2 ring-line hover:text-ink hover:ring-line-strong"}`}>
               {t.label}
               {t.shipped ? <span className={`num ml-1.5 ${on ? "opacity-80" : "text-ink-3"}`}>{n}</span> : <span className="ml-1.5 text-ink-3">Soon</span>}
             </button>
@@ -166,10 +166,10 @@ function List({ store, initialType }: { store: Store; initialType: CampaignType 
       <div role="group" aria-label="Groups" className="mb-4 flex flex-wrap items-center gap-2">
         <span className="text-xs text-ink-3">Groups</span>
         <button type="button" aria-pressed={group === "all"} onClick={() => { setGroup("all"); setRenaming(false); }}
-          className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition-colors ${group === "all" ? "bg-white/[0.08] text-ink ring-line-strong" : "text-ink-2 ring-line hover:text-ink"}`}>All</button>
+          className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition-colors ${group === "all" ? "bg-ink/[0.08] text-ink ring-line-strong" : "text-ink-2 ring-line hover:text-ink"}`}>All</button>
         {groups.map((g) => (
           <button key={g.id} type="button" aria-pressed={group === g.id} onClick={() => { setGroup(g.id); setRenaming(false); }}
-            className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition-colors ${group === g.id ? "bg-white/[0.08] text-ink ring-line-strong" : "text-ink-2 ring-line hover:text-ink"}`}>
+            className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition-colors ${group === g.id ? "bg-ink/[0.08] text-ink ring-line-strong" : "text-ink-2 ring-line hover:text-ink"}`}>
             {g.name}<span className="num ml-1.5 text-ink-3">{g.campaignIds.length}</span>
           </button>
         ))}
@@ -204,8 +204,8 @@ function List({ store, initialType }: { store: Store; initialType: CampaignType 
           ))}
         </div>
         <div role="group" aria-label="Layout" className="mb-2 flex gap-1">
-          <button type="button" aria-pressed={layout === "grid"} aria-label="Grid view" onClick={() => setLayout("grid")} className={`grid size-8 place-items-center rounded-lg ${layout === "grid" ? "bg-white/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}><LayoutGrid className="size-4" aria-hidden /></button>
-          <button type="button" aria-pressed={layout === "list"} aria-label="List view" onClick={() => setLayout("list")} className={`grid size-8 place-items-center rounded-lg ${layout === "list" ? "bg-white/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}><ListIcon className="size-4" aria-hidden /></button>
+          <button type="button" aria-pressed={layout === "grid"} aria-label="Grid view" onClick={() => setLayout("grid")} className={`grid size-8 place-items-center rounded-lg ${layout === "grid" ? "bg-ink/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}><LayoutGrid className="size-4" aria-hidden /></button>
+          <button type="button" aria-pressed={layout === "list"} aria-label="List view" onClick={() => setLayout("list")} className={`grid size-8 place-items-center rounded-lg ${layout === "list" ? "bg-ink/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}><ListIcon className="size-4" aria-hidden /></button>
         </div>
       </div>
 
@@ -249,7 +249,7 @@ function List({ store, initialType }: { store: Store; initialType: CampaignType 
                     {c.status !== "archived" && c.status !== "draft" && (
                       <button type="button" role="switch" aria-checked={live} aria-label={`Active: ${c.name}`}
                         onClick={() => void act(c.id, live ? "pause" : "resume")}
-                        className={`relative h-6 w-11 rounded-full transition-colors ${live ? "bg-brand-solid" : "bg-white/[0.12]"}`}>
+                        className={`relative h-6 w-11 rounded-full transition-colors ${live ? "bg-brand-solid" : "bg-ink/[0.12]"}`}>
                         <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${live ? "left-[22px]" : "left-0.5"}`} aria-hidden />
                       </button>
                     )}

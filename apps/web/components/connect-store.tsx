@@ -1,5 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
+import { Wand2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button, ErrorNote, Field, Input, Select } from "./ui";
@@ -7,8 +9,8 @@ import { Mascot } from "./illustrations";
 
 const PLATFORMS = [
   { id: "custom", label: "Any website (script snippet)" },
-  { id: "shopify", label: "Shopify (snippet or app embed)" },
-  { id: "woocommerce", label: "WooCommerce" },
+  { id: "shopify", label: "Shopify (then install the app from Settings)" },
+  { id: "woocommerce", label: "WooCommerce (then connect from Settings)" },
   { id: "bigcommerce", label: "BigCommerce" },
   { id: "magento", label: "Magento" },
 ] as const;
@@ -50,6 +52,11 @@ export function ConnectStore() {
         <Field label="Currency"><Input maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></Field>
       </div>
       <Button type="submit" variant="primary" busy={busy}>Connect store</Button>
+      <div className="flex items-center gap-3 border-t border-line pt-5 text-sm">
+        <Wand2 className="size-4 shrink-0 text-brand" aria-hidden />
+        <span className="text-ink-2">No store yet?</span>
+        <Link href="/app/sites" className="font-semibold text-brand hover:underline">Build one with AI</Link>
+      </div>
     </form>
   );
 }

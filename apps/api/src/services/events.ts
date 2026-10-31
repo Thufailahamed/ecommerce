@@ -1,10 +1,10 @@
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { schema } from "@convertflow/database";
-import { isCounterEvent, type TrackedEvent } from "@convertflow/contracts";
+import { isCounterEvent, monthlyLimit, type TrackedEvent } from "@convertflow/contracts";
 import { newId } from "../lib/crypto.js";
 import type { Deps } from "../deps.js";
 import { publishConfig } from "./campaigns.js";
-import { getPlan } from "./stores.js";
+import { getPlan, recordUsage } from "./entitlements.js";
 
 const ATTRIBUTION_WINDOW_MS = 7 * 86_400_000;
 const COLUMN = {
@@ -124,13 +124,9 @@ export async function processEvents(d: Deps, msg: EventMessage) {
 async function meterPageviews(d: Deps, storeId: string, n: number) {
   const [store] = await d.db.select().from(schema.stores).where(eq(schema.stores.id, storeId)).limit(1);
   if (!store) return;
-  const period = d.now().toISOString().slice(0, 7);
-  const u = schema.usageRecords;
-  const [before] = await d.db.select().from(u).where(and(eq(u.organizationId, store.organizationId), eq(u.metric, "pageviews"), eq(u.period, period))).limit(1);
-  await d.db.insert(u).values({ organizationId: store.organizationId, metric: "pageviews", period, count: n })
-    .onConflictDoUpdate({ target: [u.organizationId, u.metric, u.period], set: { count: sql`${u.count} + ${n}` } });
-  const limit = (await getPlan(d, store.organizationId)).trackedPageviewsPerMonth;
-  if ((before?.count ?? 0) < limit && (before?.count ?? 0) + n >= limit) {
+  const { before, after } = await recordUsage(d, store.organizationId, "pageviews", n);
+  const limit = monthlyLimit(await getPlan(d, store.organizationId), "pageviews");
+  if (before < limit && after >= limit) {
     const stores = await d.db.select({ id: schema.stores.id }).from(schema.stores).where(eq(schema.stores.organizationId, store.organizationId));
     for (const s of stores) await publishConfig(d, s.id);
   }

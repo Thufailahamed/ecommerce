@@ -23,24 +23,24 @@ const toastOf = (p: Page) => p.locator("[data-convertflow][data-tool=toast]");
 test.describe.serial("toast tool, end to end", () => {
   test.beforeAll(async ({ browser }) => { m = await newMerchant(browser); });
 
-  test("tool navigation: the shipped tool is usable, the others are honestly marked not available", async () => {
+  test("tool navigation: every shipped tool is usable, and an unknown tool is a 404", async () => {
     await m.page.goto("/app/tools/toast");
     const nav = m.page.getByRole("navigation", { name: "Main" });
     await expect(nav.getByRole("link", { name: "Toasts", exact: true })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /SMS signup/ })).toContainText("Soon");
+    await expect(nav.getByRole("link", { name: /SMS signup/ })).not.toContainText("Soon"); // shipped (see sms.spec.ts)
     await expect(nav.getByRole("link", { name: /Email signup/ })).not.toContainText("Soon"); // shipped (see email.spec.ts)
     await expect(nav.getByRole("link", { name: /Upsells/ })).not.toContainText("Soon"); // shipped (see upsell.spec.ts)
     await expect(m.page.getByRole("heading", { name: "Toasts", level: 1 })).toBeVisible();
     await expect(m.page.getByRole("link", { name: /Create your first campaign/ })).toBeVisible();
 
     await m.page.goto("/app/tools/sms");
-    await expect(m.page.getByText("Not available yet").first()).toBeVisible();
-    await expect(m.page.getByRole("link", { name: /New campaign/ })).toHaveCount(0);
+    await expect(m.page.getByText("Not available yet")).toHaveCount(0);
+    await expect(m.page.getByText(/does not send marketing texts itself/).first()).toBeVisible(); // never implies sending exists
     await m.page.goto("/app/tools/not-a-tool");
     await expect(m.page.getByText(/could not be found|404/i).first()).toBeVisible();
   });
 
-  test("the server refuses to publish a tool that has not shipped, even via the API", async () => {
+  test("the server refuses to publish a tool the plan does not include, even via the API", async () => {
     const cfg = {
       schemaVersion: 1, name: "SMS", tool: "sms", format: "popup", creative: { headline: "Texts", ctaLabel: "Go", ctaUrl: "/" }, style: {},
       trigger: { type: "delay", seconds: 5 }, targeting: { match: "all", conditions: [] }, frequency: {}, goal: { type: "subscribe" },
@@ -48,8 +48,8 @@ test.describe.serial("toast tool, end to end", () => {
     };
     const created = await (await apiPost(m.page, `/api/v1/stores/${m.storeId}/campaigns`, cfg)).json() as { data: { id: string; updatedAt: string } };
     const r = await apiPost(m.page, `/api/v1/stores/${m.storeId}/campaigns/${created.data.id}/publish`, { approve: true, approvedUpdatedAt: created.data.updatedAt });
-    expect(r.status()).toBe(409);
-    expect((await r.json() as { error: { code: string } }).error.code).toBe("tool_unavailable");
+    expect(r.status()).toBe(402); // SMS signup is on Growth and Scale; this merchant is on Free
+    expect((await r.json() as { error: { code: string } }).error.code).toBe("plan_limit");
   });
 
   test("merchant builds a free-shipping toast with a live preview, approves and publishes it", async () => {

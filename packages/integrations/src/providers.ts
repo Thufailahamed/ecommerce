@@ -1,5 +1,5 @@
 /**
- * List providers: where a merchant's confirmed subscribers are copied to (Klaviyo, Mailchimp; an SMS provider later).
+ * List providers: where a merchant's confirmed subscribers are copied to (Klaviyo for email and SMS, Mailchimp for email).
  * Everything here is behind one interface so the sync service never knows which provider it is talking to, and so a
  * recording fake can stand in for tests.
  *
@@ -95,9 +95,13 @@ export const KLAVIYO_ORIGIN = "https://a.klaviyo.com";
 /** Klaviyo versions its API by date header. Pinned so a vendor change cannot alter behaviour under us. */
 export const KLAVIYO_REVISION = "2024-10-15";
 
+/** The identifier Klaviyo keys a profile on for this channel. */
+const klaviyoIdentity = (c: ProviderContact): Record<string, string> | undefined =>
+  c.channel === "email" ? (c.email ? { email: c.email } : undefined) : c.phone ? { phone_number: c.phone } : undefined;
+
 class Klaviyo implements ProviderAdapter {
   readonly key = "klaviyo" as const;
-  readonly channels = ["email"] as const;
+  readonly channels = ["email", "sms"] as const;
   readonly live: boolean;
   private readonly origin: string;
   private readonly fetchFn: typeof fetch;
@@ -132,20 +136,23 @@ class Klaviyo implements ProviderAdapter {
   }
 
   async subscribe(listId: string, c: ProviderContact): Promise<{ ref?: string }> {
-    if (c.channel !== "email" || !c.email) throw new ProviderError("rejected", "Klaviyo sync supports email only");
+    const who = klaviyoIdentity(c);
+    if (!who) throw new ProviderError("rejected", c.channel === "email" ? "An email subscriber needs an address" : "An SMS subscriber needs a phone number");
     let ref: string | undefined;
     // A first name is a profile attribute, not a subscription one, so it goes in as a profile upsert first.
     if (c.firstName) {
-      const { json } = await this.call("POST", "/api/profile-import/", { data: { type: "profile", attributes: { email: c.email, first_name: c.firstName } } });
+      const { json } = await this.call("POST", "/api/profile-import/", { data: { type: "profile", attributes: { ...who, first_name: c.firstName } } });
       const id = rec(rec(json)["data"])["id"];
       if (typeof id === "string") ref = id;
     }
+    // SMS consent is its own channel at Klaviyo: subscribing a number by SMS says nothing about email, and the reverse.
+    const consent = { marketing: { consent: "SUBSCRIBED", consented_at: c.consentedAt } };
     await this.call("POST", "/api/profile-subscription-bulk-create-jobs/", {
       data: {
         type: "profile-subscription-bulk-create-job",
         attributes: {
           custom_source: c.source.slice(0, 100),
-          profiles: { data: [{ type: "profile", attributes: { email: c.email, subscriptions: { email: { marketing: { consent: "SUBSCRIBED", consented_at: c.consentedAt } } } } }] },
+          profiles: { data: [{ type: "profile", attributes: { ...who, subscriptions: c.channel === "email" ? { email: consent } : { sms: consent } } }] },
         },
         relationships: { list: { data: { type: "list", id: listId } } },
       },
@@ -154,11 +161,14 @@ class Klaviyo implements ProviderAdapter {
   }
 
   async unsubscribe(listId: string, c: ProviderContact): Promise<void> {
-    if (c.channel !== "email" || !c.email) throw new ProviderError("rejected", "Klaviyo sync supports email only");
+    const who = klaviyoIdentity(c);
+    if (!who) throw new ProviderError("rejected", c.channel === "email" ? "An email subscriber needs an address" : "An SMS subscriber needs a phone number");
+    // An SMS opt-out names the channel, so a shopper who stops texts keeps whatever email consent they gave separately.
+    const attributes = c.channel === "sms" ? { ...who, subscriptions: { sms: { marketing: { consent: "UNSUBSCRIBED" } } } } : who;
     await this.call("POST", "/api/profile-subscription-bulk-delete-jobs/", {
       data: {
         type: "profile-subscription-bulk-delete-job",
-        attributes: { profiles: { data: [{ type: "profile", attributes: { email: c.email } }] } },
+        attributes: { profiles: { data: [{ type: "profile", attributes }] } },
         relationships: { list: { data: { type: "list", id: listId } } },
       },
     });

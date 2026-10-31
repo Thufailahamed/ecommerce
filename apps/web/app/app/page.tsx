@@ -66,8 +66,8 @@ function Checklist({ steps }: { steps: Step[] }) {
         {steps.map((s, i) => {
           const isNext = i === next;
           return (
-            <li key={s.title} className={`flex flex-wrap items-center gap-4 rounded-2xl border p-4 transition-colors md:flex-nowrap md:p-5 ${isNext ? "border-brand-tint bg-brand-soft" : "border-line bg-white/[0.02]"}`}>
-              <span className={`grid size-10 shrink-0 place-items-center rounded-full ring-1 ${s.done ? "bg-ok/15 text-ok ring-ok/30" : isNext ? "bg-brand-solid text-white ring-brand-tint" : "bg-white/[0.04] text-ink-3 ring-white/10"}`}>
+            <li key={s.title} className={`flex flex-wrap items-center gap-4 rounded-2xl border p-4 transition-colors md:flex-nowrap md:p-5 ${isNext ? "border-brand-tint bg-brand-soft" : "border-line bg-ink/[0.02]"}`}>
+              <span className={`grid size-10 shrink-0 place-items-center rounded-full ring-1 ${s.done ? "bg-ok/15 text-ok ring-ok/30" : isNext ? "bg-brand-solid text-white ring-brand-tint" : "bg-ink/[0.04] text-ink-3 ring-line"}`}>
                 {s.done ? <CheckCircle2 className="size-5" aria-hidden /> : <span className="num text-sm font-semibold">{i + 1}</span>}
               </span>
               <div className="min-w-0 flex-1">
@@ -149,7 +149,7 @@ function ToolsShowcase() {
                     <div className="mt-0.5 text-xs text-ink-3">{t.tagline}</div>
                   </div>
                   {t.shipped
-                    ? <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-white/[0.05] text-ink-2 transition-all group-hover:bg-brand-solid group-hover:text-white"><ArrowUpRight className="size-4 transition-transform group-hover:translate-x-px group-hover:-translate-y-px" /></span>
+                    ? <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-ink/[0.05] text-ink-2 transition-all group-hover:bg-brand-solid group-hover:text-white"><ArrowUpRight className="size-4 transition-transform group-hover:translate-x-px group-hover:-translate-y-px" /></span>
                     : <Badge>Soon</Badge>}
                 </div>
               </Link>

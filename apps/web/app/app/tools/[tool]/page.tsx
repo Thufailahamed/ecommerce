@@ -56,7 +56,7 @@ function ToolPage({ store, tool }: { store: Store; tool: Tool }) {
             const done = meta.shipped && i === 0 && (integ.data?.configPublished ?? false);
             const Icon = done ? CheckCircle2 : Circle;
             return (
-              <li key={s} className="flex items-center gap-3 rounded-xl border border-line bg-white/[0.02] px-4 py-3 text-sm">
+              <li key={s} className="flex items-center gap-3 rounded-xl border border-line bg-ink/[0.02] px-4 py-3 text-sm">
                 <Icon className={done ? "size-5 shrink-0 text-ok" : "size-5 shrink-0 text-ink-3"} aria-hidden />
                 <span className={done ? "text-ink-2" : "text-ink"}>{s}</span>
                 {done && <Badge tone="ok">Done</Badge>}

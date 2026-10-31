@@ -31,7 +31,7 @@ export function totp(secretB32: string, now = Date.now()): string {
 
 /** Changes a workspace's plan directly in the local database: what a verified Stripe webhook does in production. */
 export function setPlanFor(email: string, plan: "free" | "starter" | "growth" | "scale") {
-  const sql = `update subscriptions set plan='${plan}' where organization_id in (select organization_id from memberships m join users u on u.id=m.user_id where u.email='${email.replace(/'/g, "")}')`;
+  const sql = `update subscriptions set plan='${plan}', status='active' where organization_id in (select organization_id from memberships m join users u on u.id=m.user_id where u.email='${email.replace(/'/g, "")}')`;
   execSync(`pnpm exec wrangler d1 execute convertflow --local --persist-to ../../tests/e2e/.state --command "${sql}"`, { cwd: new URL("../../apps/api", import.meta.url), stdio: "pipe" });
 }
 

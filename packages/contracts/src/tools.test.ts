@@ -101,6 +101,15 @@ describe("signup forms and consent", () => {
     expect(ok({ ...base, tool: "sms", format: "popup", form: smsForm })).toBe(true);
     expect(ok({ ...base, tool: "sms", format: "popup", form })).toBe(false);
   });
+  it("sms forms collect a phone only, always verify the number, and must say how to opt out", () => {
+    const sms = (f: Record<string, unknown>) => issues({ ...base, tool: "sms", format: "popup", form: { ...smsForm, ...f } });
+    expect(sms({})).toEqual([]);
+    expect(sms({ collect: { phone: true, email: true } })).toEqual(["form.collect.email: Email collection is not available on SMS forms: use the email tool for addresses"]);
+    expect(sms({ doubleOptIn: false })).toEqual(["form.doubleOptIn: Single opt-in is not available: shoppers always confirm their number with a texted code"]);
+    expect(sms({ consentText: "I agree to receive recurring marketing texts from this store." })).toEqual(['form.consentText: SMS consent text must tell shoppers how to opt out, for example "Reply STOP to opt out"']);
+    expect(sms({ consentText: "I agree to receive recurring marketing texts. Text stop to cancel." })).toHaveLength(1); // the keyword carriers honour is STOP, in capitals
+    expect(sms({ collect: { phone: true, firstName: true } })).toEqual([]);
+  });
   it("requires real consent text and a safe privacy link", () => {
     expect(ok({ ...base, tool: "email", format: "popup", form: { ...form, consentText: "ok" } })).toBe(false);
     expect(ok({ ...base, tool: "email", format: "popup", form: { ...form, privacyUrl: "javascript:alert(1)" } })).toBe(false);

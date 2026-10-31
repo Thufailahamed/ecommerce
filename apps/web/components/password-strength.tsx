@@ -26,7 +26,7 @@ export function PasswordStrength({ value }: { value: string }) {
     <div className="-mt-2 space-y-2" aria-live="polite">
       <div className="grid grid-cols-4 gap-1.5" aria-hidden>
         {[1, 2, 3, 4].map((n) => (
-          <span key={n} className={clsx("h-1.5 rounded-full transition-all duration-500", n <= score ? BARS[score - 1] : "bg-white/[0.08]")} style={{ boxShadow: n <= score ? "0 0 10px currentColor" : undefined }} />
+          <span key={n} className={clsx("h-1.5 rounded-full transition-all duration-500", n <= score ? BARS[score - 1] : "bg-ink/[0.08]")} style={{ boxShadow: n <= score ? "0 0 10px currentColor" : undefined }} />
         ))}
       </div>
       <p className="flex items-center gap-1.5 text-xs text-ink-3">

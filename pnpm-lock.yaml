@@ -205,6 +205,9 @@ importers:
       '@convertflow/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
+      '@convertflow/store-builder':
+        specifier: workspace:*
+        version: link:../../packages/store-builder
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@cloudflare/workers-types@5.20261026.1)(@libsql/client@0.15.15)
@@ -258,6 +261,9 @@ importers:
       '@convertflow/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
+      '@convertflow/store-builder':
+        specifier: workspace:*
+        version: link:../../packages/store-builder
       '@convertflow/storefront-sdk':
         specifier: workspace:*
         version: link:../storefront-sdk
@@ -352,6 +358,12 @@ importers:
         version: 0.31.11
 
   packages/integrations: {}
+
+  packages/store-builder:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   tests/e2e:
     devDependencies:

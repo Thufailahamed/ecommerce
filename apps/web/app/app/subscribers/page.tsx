@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Download, Users } from "lucide-react";
-import { apiErase, apiFile, apiPage, ApiError, type Contact, type ContactSync, type Store } from "@/lib/api";
+import { api, apiErase, apiFile, apiPage, ApiError, type Contact, type ContactSync, type Store } from "@/lib/api";
 import { NeedStore } from "@/components/need-store";
 import { ProviderPanel } from "@/components/providers";
 import { Avatar, PhotoTile } from "@/components/visuals";
@@ -19,30 +19,35 @@ function syncLabel(s: ContactSync): { text: string; tone: "ok" | "warn" | "dange
   if (s.status === "failed") return { text: `${name} failed`, tone: "danger" };
   return { text: `Not sent to ${name}`, tone: "neutral" };
 }
+type Channel = "email" | "sms";
 type Filter = "all" | Contact["emailStatus"];
 
 const where = (source: string) => (source.startsWith("form:") ? "Signup form" : source === "restock_unsubscribe" ? "Back-in-stock opt-out" : source);
 const message = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+const statusOf = (c: Contact, ch: Channel) => (ch === "email" ? c.emailStatus : c.smsStatus);
 
 function View({ store }: { store: Store }) {
+  const [channel, setChannel] = useState<Channel>("email");
   const [filter, setFilter] = useState<Filter>("all");
   const [lookup, setLookup] = useState("");
-  const [email, setEmail] = useState("");
+  const [find, setFind] = useState("");
   const [rows, setRows] = useState<Contact[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [erasing, setErasing] = useState<string | null>(null);
+  const [optingOut, setOptingOut] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const sms = channel === "sms";
 
   const query = useCallback((after: string | null) => {
-    const q = new URLSearchParams({ limit: "50" });
-    if (filter !== "all") { q.set("channel", "email"); q.set("status", filter); }
-    if (email) q.set("email", email);
+    const q = new URLSearchParams({ limit: "50", channel });
+    if (filter !== "all") q.set("status", filter);
+    if (find) q.set(sms ? "phone" : "email", find);
     if (after) q.set("cursor", after);
     return `/api/v1/stores/${store.id}/contacts?${q}`;
-  }, [store.id, filter, email]);
+  }, [store.id, channel, sms, filter, find]);
 
   useEffect(() => {
     let live = true;
@@ -88,71 +93,103 @@ function View({ store }: { store: Store }) {
     } catch (e) { setError(message(e)); setErasing(null); }
   }
 
+  /** An opt-out the merchant heard about elsewhere (a STOP reply at their texting service, a support email). */
+  async function optOut(c: Contact) {
+    setError(null); setNotice(null);
+    try {
+      await api(`/api/v1/stores/${store.id}/contacts/${c.id}/opt-out`, { method: "POST", body: { channel } });
+      setRows((x) => x.map((r) => (r.id === c.id ? { ...r, ...(sms ? { smsStatus: "unsubscribed" as const } : { emailStatus: "unsubscribed" as const }) } : r)));
+      setNotice(`Recorded. ${sms ? "This number" : "This address"} will not be added again by your forms, and is being taken off any connected list.`);
+    } catch (e) { setError(message(e)); } finally { setOptingOut(null); }
+  }
+
   async function exportCsv() {
     setExporting(true); setError(null); setNotice(null);
     try {
-      const { blob, truncated } = await apiFile(`/api/v1/stores/${store.id}/contacts/export`);
+      const { blob, truncated } = await apiFile(`/api/v1/stores/${store.id}/contacts/export?channel=${channel}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = "subscribers.csv"; document.body.appendChild(a); a.click(); a.remove();
+      a.href = url; a.download = sms ? "sms-subscribers.csv" : "subscribers.csv"; document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-      setNotice(truncated ? "Exported the first 50,000 subscribers. The list is longer than one export holds." : "Exported everyone who is currently subscribed.");
+      setNotice(truncated ? "Exported the first 50,000 subscribers. The list is longer than one export holds." : `Exported everyone currently subscribed by ${sms ? "SMS" : "email"}.`);
     } catch (e) { setError(message(e)); } finally { setExporting(false); }
   }
 
+  const noun = sms ? "number" : "address";
   return (
     <>
-      <PageHeader eyebrow="Audience" title="Subscribers" sub="People who signed up through your email forms. Only people who confirmed from their inbox count as subscribed; anyone waiting to confirm is never contacted."
-        actions={<Button onClick={() => void exportCsv()} busy={exporting}><Download className="size-4" />Export subscribed (CSV)</Button>} />
+      <PageHeader eyebrow="Audience" title="Subscribers" sub="People who signed up through your email and SMS forms. Only people who confirmed (from their inbox, or with the code we texted them) count as subscribed; anyone waiting to confirm is never contacted."
+        actions={<Button onClick={() => void exportCsv()} busy={exporting}><Download className="size-4" />Export {sms ? "SMS" : "email"} subscribers (CSV)</Button>} />
       <ErrorNote error={error} />
       {notice && <div role="status" className="mb-6"><Notice tone="brand">{notice}</Notice></div>}
 
       <ProviderPanel store={store} refreshKey={rows.map((c) => (c.sync ?? []).map((s) => `${s.provider}:${s.status}:${s.action}`).join(",")).join("|")} />
 
       <div className="card-flat mb-5 flex flex-wrap items-center gap-2 p-2">
+        <div className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-ink/[0.02] p-0.5" role="group" aria-label="Channel">
+          {(["email", "sms"] as const).map((ch) => (
+            <button key={ch} type="button" aria-pressed={channel === ch} onClick={() => { setChannel(ch); setFind(""); setLookup(""); }}
+              className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${channel === ch ? "bg-brand-solid text-white" : "text-ink-2 hover:text-ink"}`}>{ch === "email" ? "Email" : "SMS"}</button>
+          ))}
+        </div>
         <Select aria-label="Status" className="w-full sm:w-52" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
           <option value="all">All contacts</option><option value="subscribed">Subscribed</option><option value="pending">Waiting to confirm</option><option value="unsubscribed">Unsubscribed</option>
         </Select>
-        <form className="flex min-w-0 flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); setEmail(lookup.trim()); }}>
-          <Input aria-label="Find by exact email address" type="search" placeholder="Find an exact email address" className="min-w-0 flex-1 sm:max-w-sm" value={lookup} onChange={(e) => { setLookup(e.target.value); if (!e.target.value) setEmail(""); }} />
+        <form className="flex min-w-0 flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); setFind(lookup.trim()); }}>
+          <Input aria-label={sms ? "Find by exact phone number" : "Find by exact email address"} type="search" placeholder={sms ? "Find an exact number, e.g. +14155550123" : "Find an exact email address"} className="min-w-0 flex-1 sm:max-w-sm" value={lookup} onChange={(e) => { setLookup(e.target.value); if (!e.target.value) setFind(""); }} />
           <Button type="submit">Find</Button>
         </form>
       </div>
 
       {loading && rows.length === 0 && <Skeleton className="h-40" />}
       {!loading && !error && rows.length === 0 && (
-        <Empty icon={Users} visual={<PhotoTile k="p-shopper" alt="" className="mx-auto h-36 w-56 max-w-full" />} title={email || filter !== "all" ? "No contacts match" : "No subscribers yet"} body={email || filter !== "all" ? "Try another status or address." : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
+        <Empty icon={Users} visual={<PhotoTile k="p-shopper" alt="" className="mx-auto h-36 w-56 max-w-full" />} title={find || filter !== "all" ? "No contacts match" : `No ${sms ? "SMS" : "email"} subscribers yet`}
+          body={find || filter !== "all" ? `Try another status or ${noun}.`
+            : sms ? "Create an SMS signup campaign under Tools. People appear here once they enter their number, and become subscribed when they type back the code we text them."
+            : "Create an email signup campaign under Tools. People appear here once they enter their address, and become subscribed when they confirm."} />
       )}
       {rows.length > 0 && (
         <div className="card overflow-hidden">
         <div className="overflow-x-auto">
         <table className={tableClass}>
-          <thead><tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3"><th className="font-medium">Email</th><th className="font-medium">Status</th><th className="font-medium">Came from</th><th className="font-medium">Signed up</th><th className="font-medium">Email platform</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>{rows.map((c) => (
-            <tr key={c.id}>
-              <td>
-                <div className="flex min-w-0 items-center gap-3">
-                  <Avatar seed={c.email ?? c.phone ?? "?"} />
-                  <span className="min-w-0 break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{c.email ?? c.phone ?? "–"}</span>
-                </div>
-              </td>
-              <td><Badge tone={TONE[c.emailStatus]} dot>{STATUS_LABEL[c.emailStatus]}</Badge></td>
-              <td className="text-ink-2">{where(c.source)}</td>
-              <td className="num text-ink-2">{new Date(c.createdAt).toLocaleDateString()}</td>
-              <td>{(c.sync ?? []).length === 0 ? <span className="text-ink-3">–</span> : <span className="flex flex-wrap gap-1">{(c.sync ?? []).map((s) => { const l = syncLabel(s); return <span key={s.provider} title={s.error ?? undefined}><Badge tone={l.tone}>{l.text}</Badge></span>; })}</span>}</td>
-              <td className="text-right">
-                {erasing === c.id
-                  ? <span className="inline-flex gap-2"><Button variant="danger" onClick={() => void erase(c.id)}>Erase for good</Button><Button variant="ghost" onClick={() => setErasing(null)}>Cancel</Button></span>
-                  : <Button variant="ghost" aria-label={`Erase ${c.email ?? c.phone ?? "contact"}`} onClick={() => setErasing(c.id)}>Erase</Button>}
-              </td>
-            </tr>
-          ))}</tbody>
+          <thead><tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-3"><th className="font-medium">{sms ? "Phone" : "Email"}</th><th className="font-medium">Status</th><th className="font-medium">Came from</th><th className="font-medium">Signed up</th><th className="font-medium">{sms ? "Messaging platform" : "Email platform"}</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>{rows.map((c) => {
+            const id = (sms ? c.phone : c.email) ?? c.email ?? c.phone ?? "–";
+            const status = statusOf(c, channel);
+            return (
+              <tr key={c.id}>
+                <td>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar seed={id} />
+                    <span className="num min-w-0 break-all">{c.firstName && <span className="mr-1 font-medium">{c.firstName}</span>}{id}</span>
+                  </div>
+                </td>
+                <td><Badge tone={TONE[status]} dot>{STATUS_LABEL[status]}</Badge></td>
+                <td className="text-ink-2">{where(c.source)}</td>
+                <td className="num text-ink-2">{new Date(c.createdAt).toLocaleDateString()}</td>
+                <td>{(c.sync ?? []).length === 0 ? <span className="text-ink-3">–</span> : <span className="flex flex-wrap gap-1">{(c.sync ?? []).map((s) => { const l = syncLabel(s); return <span key={s.provider} title={s.error ?? undefined}><Badge tone={l.tone}>{l.text}</Badge></span>; })}</span>}</td>
+                <td className="text-right">
+                  {erasing === c.id
+                    ? <span className="inline-flex gap-2"><Button variant="danger" onClick={() => void erase(c.id)}>Erase for good</Button><Button variant="ghost" onClick={() => setErasing(null)}>Cancel</Button></span>
+                    : optingOut === c.id
+                      ? <span className="inline-flex gap-2"><Button variant="danger" onClick={() => void optOut(c)}>Confirm opt-out</Button><Button variant="ghost" onClick={() => setOptingOut(null)}>Cancel</Button></span>
+                      : <span className="inline-flex gap-1">
+                          {(status === "subscribed" || status === "pending") && <Button variant="ghost" aria-label={`Record opt-out for ${id}`} onClick={() => setOptingOut(c.id)}>Opt out</Button>}
+                          <Button variant="ghost" aria-label={`Erase ${id}`} onClick={() => setErasing(c.id)}>Erase</Button>
+                        </span>}
+                </td>
+              </tr>
+            );
+          })}</tbody>
         </table>
         </div>
         </div>
       )}
       {cursor && <div className="mt-4"><Button onClick={() => void more()} busy={loading}>Load more</Button></div>}
-      <p className="mt-8 text-xs leading-relaxed text-ink-3">Erasing deletes the contact and their consent history, and takes them off any connected Klaviyo or Mailchimp list (their profile there is not deleted). If they had unsubscribed, a hashed entry (not their address) stays so they are never re-added by mistake.</p>
+      <p className="mt-8 text-xs leading-relaxed text-ink-3">
+        Opt out records a request you received elsewhere (for example a STOP reply to your texting service): the person is unsubscribed, never re-added by your forms, and taken off any connected list.
+        {" "}Erasing deletes the contact and their consent history, and takes them off any connected Klaviyo or Mailchimp list (their profile there is not deleted). If they had unsubscribed, a hashed entry (not their {noun}) stays so they are never re-added by mistake.
+      </p>
     </>
   );
 }

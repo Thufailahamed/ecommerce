@@ -8,23 +8,27 @@ const dev = process.env.NODE_ENV !== "production";
  * (a nonce-based policy would require dynamic rendering of every page). What this still enforces: no plugins,
  * no framing, no form posts or fetches to unexpected origins, and scripts only from this origin and Turnstile.
  */
-const csp = [
+const policy = (frameAncestors: string) => [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} https://challenges.cloudflare.com`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https:",
+  // The API serves store images (uploads and AI-generated), over http in local development.
+  `img-src 'self' data: blob: https: ${api}`,
   "font-src 'self' data:",
   `connect-src 'self' ${api} https://challenges.cloudflare.com${dev ? " ws:" : ""}`,
-  "frame-src https://challenges.cloudflare.com",
-  "frame-ancestors 'none'",
+  "frame-src 'self' https://challenges.cloudflare.com",
+  `frame-ancestors ${frameAncestors}`,
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
 ].join("; ");
+const csp = policy("'none'");
+/** The store builder's live preview is this app framed by itself, so /preview may be framed by this origin only. */
+const previewCsp = policy("'self'");
 
 const config: NextConfig = {
   // Workspace packages ship TypeScript source.
-  transpilePackages: ["@convertflow/contracts", "@convertflow/campaign-engine", "@convertflow/storefront-sdk", "@convertflow/integrations"],
+  transpilePackages: ["@convertflow/contracts", "@convertflow/campaign-engine", "@convertflow/storefront-sdk", "@convertflow/integrations", "@convertflow/store-builder"],
   poweredByHeader: false,
   // In dev the API allows exactly one origin (http://localhost:<port>) and its cookie is SameSite=Lax. Opened as
   // 127.0.0.1 (or a LAN address) Next blocks its dev resources, React never hydrates and every click does nothing,
@@ -40,17 +44,22 @@ const config: NextConfig = {
     }));
   },
   async headers() {
-    return [{
-      source: "/:path*",
-      headers: [
-        { key: "Content-Security-Policy", value: csp },
-        { key: "X-Content-Type-Options", value: "nosniff" },
-        { key: "X-Frame-Options", value: "DENY" },
-        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
-        { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-      ],
-    }];
+    const common = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+      { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+    ];
+    return [
+      {
+        source: "/((?!preview/).*)",
+        headers: [{ key: "Content-Security-Policy", value: csp }, { key: "X-Frame-Options", value: "DENY" }, ...common],
+      },
+      {
+        source: "/preview/:path*",
+        headers: [{ key: "Content-Security-Policy", value: previewCsp }, { key: "X-Frame-Options", value: "SAMEORIGIN" }, ...common],
+      },
+    ];
   },
 };
 export default config;

@@ -4,6 +4,7 @@
 //   node scripts/dev-local.mjs up                    create everything that is missing, then run all four services
 //   node scripts/dev-local.mjs db                    create / upgrade the local database only
 //   node scripts/dev-local.mjs plan <email> <plan>   give an account a plan (free|starter|growth|scale), as a Stripe webhook would
+//   node scripts/dev-local.mjs feature <email> <cap> switch a preview capability on for the account's workspaces (workflows.create|ai.commerce_manager)
 //   node scripts/dev-local.mjs reset                 delete the local database (stop `up` first)
 //
 // Services: API :8790, web app :3200, demo storefront :4000, mail inbox :4100 (stands in for Resend).
@@ -51,6 +52,15 @@ function migrate() {
 function setPlan(email, plan) {
   if (!/^[\w.+-]+@[\w.-]+$/.test(email ?? "") || !PLANS.includes(plan)) { console.error(`Usage: plan <email> <${PLANS.join("|")}>`); process.exit(1); }
   const sql = `update subscriptions set plan='${plan}', status='active' where organization_id in (select m.organization_id from memberships m join users u on u.id=m.user_id where u.email='${email.toLowerCase()}')`;
+  const r = run(`pnpm exec wrangler d1 execute convertflow --local --persist-to ${quoted(STATE)} --command ${quoted(sql)}`, API_DIR);
+  process.exit(r.status ?? 1);
+}
+
+/** Preview capabilities (packages/contracts/src/entitlements.ts). The plan must still grant them. */
+const PREVIEWS = ["workflows.create", "ai.commerce_manager"];
+function enableFeature(email, cap) {
+  if (!/^[\w.+-]+@[\w.-]+$/.test(email ?? "") || !PREVIEWS.includes(cap)) { console.error(`Usage: feature <email> <${PREVIEWS.join("|")}>`); process.exit(1); }
+  const sql = `insert or ignore into organization_features (organization_id, feature, enabled_by, created_at) select m.organization_id, '${cap}', 'dev-local', '${new Date().toISOString()}' from memberships m join users u on u.id=m.user_id where u.email='${email.toLowerCase()}'`;
   const r = run(`pnpm exec wrangler d1 execute convertflow --local --persist-to ${quoted(STATE)} --command ${quoted(sql)}`, API_DIR);
   process.exit(r.status ?? 1);
 }
@@ -157,5 +167,6 @@ const [cmd = "up", ...rest] = process.argv.slice(2);
 if (cmd === "up") up();
 else if (cmd === "db") { ensureEnv(); migrate(); }
 else if (cmd === "plan") setPlan(rest[0], rest[1]);
+else if (cmd === "feature") enableFeature(rest[0], rest[1]);
 else if (cmd === "reset") { rmSync(join(ROOT, ".local-dev"), { recursive: true, force: true }); console.log("local database deleted"); }
-else { console.error("Usage: node scripts/dev-local.mjs [up|db|plan <email> <plan>|reset]"); process.exit(1); }
+else { console.error("Usage: node scripts/dev-local.mjs [up|db|plan <email> <plan>|feature <email> <capability>|reset]"); process.exit(1); }

@@ -27,7 +27,7 @@ const SECTIONS: { id: string; title: string; sub: string; match: (t: Template) =
 
 function Radio({ name, value, checked, label, count, onChange }: { name: string; value: string; checked: boolean; label: string; count?: number; onChange(): void }) {
   return (
-    <label className={`flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-white/[0.04] ${checked ? "text-ink" : "text-ink-2"}`}>
+    <label className={`flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-ink/[0.04] ${checked ? "text-ink" : "text-ink-2"}`}>
       <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="size-4 accent-[#2350ff]" />
       <span className="flex-1">{label}</span>
       {count !== undefined && <span className="num text-xs text-ink-3">{count}</span>}

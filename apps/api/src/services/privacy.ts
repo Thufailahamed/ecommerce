@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { schema } from "@convertflow/database";
-import { newId } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
+import { recordAudit } from "./audit.js";
 
 const s = schema;
 
@@ -23,6 +23,7 @@ export async function purgeStoreData(d: Deps, storeId: string) {
   await d.db.delete(s.aiGenerations).where(eq(s.aiGenerations.storeId, storeId));
   await d.db.delete(s.webhookEvents).where(eq(s.webhookEvents.storeId, storeId));
   await d.db.delete(s.auditLogs).where(eq(s.auditLogs.storeId, storeId));
+  await d.db.delete(s.domainEvents).where(eq(s.domainEvents.storeId, storeId)); // deliveries cascade
   // cascades: campaigns -> versions, products -> variants, credentials
   await d.db.delete(s.campaigns).where(eq(s.campaigns.storeId, storeId));
   await d.db.delete(s.campaignTemplates).where(eq(s.campaignTemplates.storeId, storeId));
@@ -54,6 +55,14 @@ export async function deleteAccount(d: Deps, userId: string) {
   for (const org of sole) {
     const stores = await d.db.select({ id: s.stores.id }).from(s.stores).where(eq(s.stores.organizationId, org));
     for (const st of stores) await purgeStoreData(d, st.id);
+    // Built stores cascade with the workspace in the database; take them offline and drop their images too.
+    const built = await d.db.select({ id: s.sites.id, slug: s.sites.slug }).from(s.sites).where(eq(s.sites.organizationId, org));
+    for (const site of built) {
+      await d.kv.put(`site:pub:${site.slug}`, JSON.stringify({ gone: true }));
+      const assets = await d.db.select({ id: s.siteAssets.id }).from(s.siteAssets).where(eq(s.siteAssets.siteId, site.id));
+      for (const a of assets) await d.kv.put(`asset:${a.id}`, "", { expirationTtl: 60 });
+      await d.db.delete(s.aiGenerations).where(eq(s.aiGenerations.storeId, site.id));
+    }
     await d.db.delete(s.usageRecords).where(eq(s.usageRecords.organizationId, org));
     await d.db.delete(s.subscriptions).where(eq(s.subscriptions.organizationId, org));
     await d.db.delete(s.organizations).where(eq(s.organizations.id, org));
@@ -65,7 +74,7 @@ export async function deleteAccount(d: Deps, userId: string) {
 
 /** Records a request we cannot fulfil automatically so it is not silently dropped. */
 export async function logPrivacyRequest(d: Deps, storeId: string | null, action: string, ref: string) {
-  await d.db.insert(s.auditLogs).values({ id: newId("aud"), storeId, action, targetType: "privacy_request", targetId: ref, createdAt: d.now().toISOString() });
+  await recordAudit(d, { action, actorId: null, actorType: "platform", storeId, targetType: "privacy_request", targetId: ref });
 }
 
 export async function storeByExternal(d: Deps, platform: "shopify", externalId: string) {

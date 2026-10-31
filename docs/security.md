@@ -38,3 +38,37 @@ Not security-reviewed by anyone but the author. What the code does:
 - **Erasure** unsubscribes the person at each provider and erases locally even when a provider is down (reported in `x-provider-cleanup-failed`, audited by provider name only). It does not delete their profile at the provider.
 - **Incentive**: the code is never in the form, the config, or the confirmation request email; it appears only on the single-use confirmation page (HTML-escaped) and in one email after confirming. It is only given while the store's discount ceiling still allows it, using the form version the shopper actually used.
 - **Not done**: no rate limit per provider beyond the per-isolate limiter on the connect and check routes; no key rotation or expiry; the mock-vs-real distinction relies on a server variable being unset in production.
+
+## Security review of the launch round (2026-10-29)
+
+Scope: the new surfaces (Shopify install, sync and billing; SMS signup; per-plan serving) and the code paths they touch.
+Done by the author with targeted tests; **not** an independent review or penetration test.
+
+| # | Finding | Severity | Status | Evidence |
+|---|---|---|---|---|
+| 1 | **Shop squatting**: creating a store with `platform: "shopify"` stored the typed domain as the shop identity that routes webhooks, so anyone could register another merchant's `myshopify.com` domain, receive that shop's product and order webhooks, and block the real owner's install (`shop_in_use`) | P0 (cross-tenant data) | Fixed: a shop identity is set only by a completed OAuth install | `shopify.test.ts` "typing another merchant's shop domain claims nothing" |
+| 2 | **Privacy webhooks ignored stored PII**: `customers/redact` and `customers/data_request` only logged, on the premise "we keep no shopper PII", which stopped being true when signup contacts were added | P0 (privacy obligation) | Fixed: redact erases matching contacts (and provider copies); data requests record matching contact ids for the merchant | `shopify.test.ts` privacy webhooks |
+| 3 | **Signup forms publishable without a way to confirm**: an email form could go live with no email delivery configured, holding every signup as pending forever | P1 | Fixed: publish refuses (`email_unavailable` / `sms_unavailable`) | `tools.test.ts` |
+| 4 | **Downgrade kept serving paid tools**: a workspace that stopped paying kept serving upsell, email, SMS forms and holdouts | P1 (billing integrity) | Fixed: the storefront config serves only what the plan allows, capped at the plan's live-campaign limit; billing changes republish at once; nothing is deleted | `shopify.test.ts` billing, `sms.test.ts` |
+| 5 | **`orders/create` without `read_orders`**: the toml subscribed to order webhooks without the scope Shopify requires | P1 (would fail at deploy) | Fixed: scope added and justified; `pnpm lint` fails if code and toml drift | `scripts/check-repo.mjs` |
+| 6 | **Wrangler environments missing bindings**: `env.staging`/`env.production` declared no D1/KV/Queue/AI bindings (not inherited), so an env deploy would have no database | P1 (deploy) | Fixed in `apps/api/wrangler.jsonc` with per-environment placeholders | config review |
+| 7 | Phone numbers would be exported with a spreadsheet-escape apostrophe, corrupting every row for importers | P3 | Fixed: validated E.164 values cannot form a formula and are exported as is | `sms.test.ts` export |
+| 8 | Suppression hashes are unkeyed SHA-256 of store id + identifier; a phone number can be brute-forced from one | P2 | Open: needs a keyed hash and a migration of existing entries | `docs/privacy-and-data.md` |
+| 9 | Public billing return URL makes an outbound Shopify call per request | P3 | Fixed: rate-limited per address | code review |
+
+### Shopify app
+- Install, launch and callback URLs: HMAC over the sorted, form-encoded query (constant-time), 1-hour timestamp window;
+  `state` is 24 random bytes, single use, 10 minutes, and bound to the shop; a dashboard-started install completes only
+  for the same signed-in user (the Lax session cookie rides the top-level redirect). The authorization URL always points
+  at the shop's own `myshopify.com` host; server-side calls never go to a host taken from a request.
+- Tokens: offline tokens are AES-GCM encrypted at rest (a pending install's too) and never returned, logged or audited;
+  revocation (401/403) is reported as "reconnect". Claim links are 24 random bytes, stored hashed, single use, 30 minutes.
+- Billing state comes only from Shopify: the return URL's charge id and a webhook's payload are both re-read from
+  Shopify before anything changes; only the workspace's current charge can cancel or freeze it.
+
+### SMS signup
+- The consent wording recorded is always the live form's, never the request's; the browser can only say "the box was
+  ticked". A number is subscribed only after Twilio approves the code, for a request from the same live form in the last
+  30 minutes. Answers do not reveal whether a number is subscribed or suppressed.
+- Cost abuse: per-plan monthly verification quota checked before sending; 10-minute per-number cooldown; per-address and
+  per-number limits on code checks (per isolate: add edge rules).

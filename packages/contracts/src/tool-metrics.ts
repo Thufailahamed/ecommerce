@@ -30,13 +30,21 @@ const ATTRIBUTED: ToolMetricDef[] = [
 
 const FORM: ToolMetricDef[] = [
   { key: "impressions", label: "Form views", format: "count", note: "Consenting browsers only" },
-  // `formSubmit*` (browser-reported submit attempts, successes and failures) are collected and returned by the API but not shown:
-  // the storefront SDK does not send those events yet, so the tile would always read zero. Add them here once it does.
+  // Browser-reported, so only consenting visitors are counted; the server's request and confirmation counts are the real numbers.
+  { key: "formSubmitSuccesses", label: "Form submissions", format: "count", note: "Consenting browsers only" },
+  { key: "formSubmitFailures", label: "Failed submissions", format: "count", note: "Network or server errors seen by the browser" },
   { key: "requested", label: "Sign-up requests", format: "count", note: "Counted on the server" },
   { key: "confirmed", label: "Confirmed opt-ins", format: "count", note: "Counted on the server" },
   { key: "requestRate", label: "Request rate", format: "rate", note: "Requests per form view; an estimate" },
   { key: "confirmRate", label: "Confirmation rate", format: "rate", note: "Confirmed per request" },
 ];
+
+/** SMS: a request is a code texted to the number, a confirmation is the shopper entering that code. */
+const SMS_FORM: ToolMetricDef[] = FORM.map((m) =>
+  m.key === "requested" ? { ...m, label: "Codes sent" }
+  : m.key === "confirmed" ? { ...m, label: "Verified numbers" }
+  : m.key === "confirmRate" ? { ...m, label: "Verification rate", note: "Verified per code sent" }
+  : m);
 
 /** The metrics shown first for each tool, in order. */
 export const TOOL_METRICS: Record<Tool, readonly ToolMetricDef[]> = {
@@ -63,5 +71,5 @@ export const TOOL_METRICS: Record<Tool, readonly ToolMetricDef[]> = {
     ...ATTRIBUTED,
   ],
   email: FORM,
-  sms: FORM,
+  sms: SMS_FORM,
 };

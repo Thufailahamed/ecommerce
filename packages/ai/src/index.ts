@@ -2,6 +2,9 @@ import { buildPrompt } from "./prompt.js";
 import { AIValidationError, type CampaignGenerationInput } from "./policy.js";
 
 export * from "./policy.js";
+export * from "./tasks.js";
+export * from "./gateway.js";
+import type { CompletionRequest, TextAIProvider } from "./tasks.js";
 export { buildPrompt, sanitizeCatalog, suggestTool } from "./prompt.js";
 
 /** Cheap, strong default: Llama 3.3 70B FP8 Fast on Workers AI. Override with the AI_MODEL var. */
@@ -19,8 +22,22 @@ export interface AiBinding {
 }
 
 /** UNVERIFIED against the live service: no Cloudflare account has been available. Everything above this class is tested with fakes. */
-export class WorkersAIProvider implements CampaignAIProvider {
+export class WorkersAIProvider implements CampaignAIProvider, TextAIProvider {
   constructor(private ai: AiBinding, private opts: { model: string; gatewayId?: string }) {}
+
+  async complete(req: CompletionRequest, signal?: AbortSignal) {
+    const run = this.ai.run(
+      this.opts.model,
+      { messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }], max_tokens: req.maxTokens, ...(req.json ? { response_format: { type: "json_object" } } : {}) },
+      this.opts.gatewayId ? { gateway: { id: this.opts.gatewayId } } : undefined,
+    );
+    const o = (await withAbort(run, signal)) as { response?: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+    const usage: UsageInfo = { model: this.opts.model };
+    if (o.usage?.prompt_tokens !== undefined) usage.inputTokens = o.usage.prompt_tokens;
+    if (o.usage?.completion_tokens !== undefined) usage.outputTokens = o.usage.completion_tokens;
+    // With response_format the binding may already have parsed the JSON.
+    return { text: typeof o.response === "string" ? o.response : JSON.stringify(o.response ?? ""), usage };
+  }
 
   async generateCampaign(input: CampaignGenerationInput, signal?: AbortSignal) {
     const { system, user } = buildPrompt(input);

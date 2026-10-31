@@ -57,6 +57,55 @@
       "when": 1793198191746,
       "tag": "0007_campaign_groups_and_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793251350691,
+      "tag": "0008_platform_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793254794391,
+      "tag": "0009_entitlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793256398564,
+      "tag": "0010_workflows_and_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1793257010211,
+      "tag": "0011_ai_task_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793261680532,
+      "tag": "0012_ai_store_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793271952132,
+      "tag": "0013_shopify_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1793278302327,
+      "tag": "0014_platform_connections",
+      "breakpoints": true
     }
   ]
 }

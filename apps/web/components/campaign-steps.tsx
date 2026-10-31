@@ -24,7 +24,7 @@ export function CampaignSteps({ id, current }: { id: string; current: CampaignSt
             {i > 0 && <ChevronRight aria-hidden className="size-3.5 text-ink-3" />}
             <Link href={`/app/campaigns/${id}${s.path ? `/${s.path}` : ""}`} aria-current={on ? "step" : undefined}
               className={clsx("rounded-full px-3.5 py-1.5 font-medium transition-colors",
-                on ? "bg-brand-solid text-white shadow-[0_8px_20px_-10px_rgba(35,80,255,1)]" : "text-ink-2 hover:bg-white/[0.06] hover:text-ink")}>
+                on ? "bg-brand-solid text-white shadow-[0_8px_20px_-10px_rgba(35,80,255,1)]" : "text-ink-2 hover:bg-ink/[0.06] hover:text-ink")}>
               {s.label}
             </Link>
           </span>

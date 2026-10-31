@@ -173,6 +173,12 @@ export const CampaignConfig = z.object({
   if (tool === "sms") {
     if (!c.form) bad(["form"], "SMS campaigns need a signup form");
     else if (!c.form.collect.phone) bad(["form", "collect", "phone"], "An SMS form must collect a phone number");
+    else {
+      if (c.form.collect.email) bad(["form", "collect", "email"], "Email collection is not available on SMS forms: use the email tool for addresses");
+      if (!c.form.doubleOptIn) bad(["form", "doubleOptIn"], "Single opt-in is not available: shoppers always confirm their number with a texted code");
+      // Carriers and most jurisdictions expect the opt-out instruction in the very words the shopper agrees to.
+      if (!/\bSTOP\b/.test(c.form.consentText)) bad(["form", "consentText"], 'SMS consent text must tell shoppers how to opt out, for example "Reply STOP to opt out"');
+    }
   }
   if (tool === "email" && c.format !== "restock") {
     if (!c.form) bad(["form"], "Email campaigns need a signup form");

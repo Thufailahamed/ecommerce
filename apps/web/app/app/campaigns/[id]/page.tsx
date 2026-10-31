@@ -19,7 +19,7 @@ function Edit({ store, id }: { store: Store; id: string }) {
   const search = useSearchParams();
   // Only shipped tools can be created. An unknown or unshipped ?tool= falls back to the classic editor.
   const asked = search.get("tool");
-  const tool = isNew && (asked === "toast" || asked === "feed" || asked === "email" || asked === "upsell") && TOOLS[asked].shipped ? asked : undefined;
+  const tool = isNew && (asked === "toast" || asked === "feed" || asked === "email" || asked === "upsell" || asked === "sms") && TOOLS[asked].shipped ? asked : undefined;
   const template = isNew ? templateById(search.get("template")) : undefined;
   const fromId = isNew ? search.get("from") : null;
   // A new campaign with nothing chosen yet starts at the template gallery.

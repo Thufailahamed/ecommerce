@@ -57,7 +57,7 @@ describe("studio helpers", () => {
     expect(opts[0]).toEqual({ value: "auto", label: "Let AI choose", disabled: false });
     expect(opts.slice(1).map((o) => o.value)).toEqual([...TOOL_ORDER]);
     for (const o of opts.slice(1)) expect(o.disabled, o.value).toBe(!SHIPPED_TOOLS.has(o.value as Tool));
-    expect(opts.find((o) => o.value === "sms")?.label).toMatch(/not available yet/);
+    expect(opts.find((o) => o.value === "sms")).toEqual({ value: "sms", label: "SMS signup", disabled: false }); // shipped: SMS signup with a texted confirmation code
   });
 
   it("offers each tool only the inputs that apply to it, and everything in auto mode", () => {
@@ -160,13 +160,13 @@ describe("AI studio page", () => {
   const generate = () => screen.getByRole("button", { name: /Generate draft/ });
   const lastBody = () => apiMock.mock.calls.at(-1)?.[1]?.body as Record<string, unknown>;
 
-  it("offers a tool choice with unavailable tools disabled", async () => {
+  it("offers a tool choice, with only unavailable tools disabled", async () => {
     await page();
     const select = screen.getByLabelText("What should it build?");
     const labels = within(select).getAllByRole("option");
     expect(labels[0]).toHaveTextContent("Let AI choose");
     const sms = labels.find((o) => /SMS signup/.test(o.textContent ?? ""));
-    expect(sms).toBeDisabled();
+    expect((sms as HTMLOptionElement).disabled).toBe(false);
     expect(labels.filter((o) => (o as HTMLOptionElement).disabled).length).toBe(TOOL_ORDER.filter((t) => !SHIPPED_TOOLS.has(t)).length);
   });
 

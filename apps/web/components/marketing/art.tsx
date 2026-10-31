@@ -270,7 +270,7 @@ export function UpsellMock({ items, compact }: { items: Product[]; compact?: boo
       <p className={`font-display font-bold uppercase ${compact ? "text-[8px]" : "text-[13px]"}`}>Your cart</p>
       <div className={`mt-2 rounded-lg bg-[#eef2ff] font-semibold text-[#2350ff] ${compact ? "p-1 text-[6px]" : "p-2 text-[9.5px]"}`}>You are $12 away from free shipping</div>
       <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/10"><div className="h-full w-3/4 rounded-full bg-[#2350ff]" /></div>
-      <p className={`mt-3 font-semibold text-black/50 ${compact ? "text-[6.5px]" : "text-[10px]"}`}>Complete the look</p>
+      <p className={`mt-3 font-semibold text-black/60 ${compact ? "text-[6.5px]" : "text-[10px]"}`}>Complete the look</p>
       <div className="mt-1.5 space-y-1.5">
         {items.map((p) => (
           <div key={p} className="flex items-center gap-2">

@@ -99,7 +99,7 @@ function Launch({ store, id }: { store: Store; id: string }) {
               <Badge tone={live ? "ok" : "neutral"} dot>{status ?? "–"}</Badge>
               <button type="button" role="switch" aria-checked={live} aria-label="Launch your campaign" disabled={!canToggle || busy}
                 onClick={() => void toggle()}
-                className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${live ? "bg-brand-solid" : "bg-white/[0.12]"}`}>
+                className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${live ? "bg-brand-solid" : "bg-ink/[0.12]"}`}>
                 <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${live ? "left-[22px]" : "left-0.5"}`} aria-hidden />
               </button>
             </div>

@@ -75,8 +75,38 @@ describe("klaviyo adapter (request shapes only: never run against the real servi
     expect(createAdapter("klaviyo", key, { baseUrl: "http://localhost:9999" }).live).toBe(false);
   });
 
-  it("refuses to sync an SMS contact", async () => {
-    expect((await failure(createAdapter("klaviyo", key, { fetchFn: mock().fetchFn }).subscribe("L1", { channel: "sms", phone: "+14155550123", consentedAt: "t", source: "s" }))).kind).toBe("rejected");
+  const texter: ProviderContact = { channel: "sms", phone: "+14155550123", consentedAt: "2026-10-27T10:00:00.000Z", source: "form:cmp_sms" };
+
+  it("subscribes a verified number with SMS consent only, keyed on the phone number", async () => {
+    const m = mock({ status: 202 });
+    await createAdapter("klaviyo", key, { fetchFn: m.fetchFn }).subscribe("L1", texter);
+    expect(m.calls).toHaveLength(1);
+    const attrs = (m.calls[0]!.body as { data: { attributes: { profiles: { data: { attributes: Record<string, unknown> }[] } } } }).data.attributes.profiles.data[0]!.attributes;
+    expect(attrs).toEqual({ phone_number: "+14155550123", subscriptions: { sms: { marketing: { consent: "SUBSCRIBED", consented_at: "2026-10-27T10:00:00.000Z" } } } });
+    expect(JSON.stringify(m.calls[0]!.body)).not.toContain('"email"');
+  });
+
+  it("puts an SMS subscriber's first name on the profile by phone number", async () => {
+    const m = mock({ status: 200, json: { data: { id: "PRF" } } }, { status: 202 });
+    expect(await createAdapter("klaviyo", key, { fetchFn: m.fetchFn }).subscribe("L1", { ...texter, firstName: "Ada" })).toEqual({ ref: "PRF" });
+    expect(m.calls[0]!.body).toEqual({ data: { type: "profile", attributes: { phone_number: "+14155550123", first_name: "Ada" } } });
+  });
+
+  it("an SMS opt-out names the SMS channel, so email consent is left alone", async () => {
+    const m = mock({ status: 202 });
+    await createAdapter("klaviyo", key, { fetchFn: m.fetchFn }).unsubscribe("L1", texter);
+    const attrs = (m.calls[0]!.body as { data: { attributes: { profiles: { data: { attributes: Record<string, unknown> }[] } } } }).data.attributes.profiles.data[0]!.attributes;
+    expect(attrs).toEqual({ phone_number: "+14155550123", subscriptions: { sms: { marketing: { consent: "UNSUBSCRIBED" } } } });
+  });
+
+  it("refuses a contact without the identifier its channel needs, before any request", async () => {
+    const m = mock();
+    expect((await failure(createAdapter("klaviyo", key, { fetchFn: m.fetchFn }).subscribe("L1", { ...texter, phone: undefined }))).kind).toBe("rejected");
+    expect(m.calls).toHaveLength(0);
+  });
+
+  it("mailchimp still refuses SMS contacts", async () => {
+    expect((await failure(createAdapter("mailchimp", { apiKey: "abcdef0123456789-us21" }, { fetchFn: mock().fetchFn }).subscribe("L1", texter))).kind).toBe("rejected");
   });
 });
 

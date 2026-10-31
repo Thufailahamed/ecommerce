@@ -3,6 +3,7 @@ import { z } from "zod";
 import { schema } from "@convertflow/database";
 import { newId } from "../lib/crypto.js";
 import type { Deps } from "../deps.js";
+import { publishDomainEvent } from "./domain-events.js";
 
 /**
  * Platform-neutral catalog shape. Shopify/WooCommerce/BigCommerce adapters, CSV import and
@@ -61,6 +62,20 @@ export async function upsertProducts(d: Deps, storeId: string, items: CatalogPro
     }
   }
   return { created, updated, restocked };
+}
+
+/**
+ * One `catalog.products_changed` platform event per batch (never per product), and only when something changed.
+ * `key` identifies the batch: the webhook delivery, or a fresh id for an import or a sync page.
+ */
+export async function announceCatalogChange(d: Deps, storeId: string, origin: "import" | "sync" | "webhook", key: string,
+  r: { created: number; updated: number; archived?: number; restocked: string[] }, webhookPlatform: "shopify" | "woocommerce" = "shopify") {
+  const archived = r.archived ?? 0;
+  if (r.created + r.updated + archived === 0) return;
+  await publishDomainEvent(d, {
+    type: "catalog.products_changed", idempotencyKey: `catalog:${key}`, storeId, source: origin === "webhook" ? `${webhookPlatform}_webhook` : "api",
+    payload: { origin, created: r.created, updated: r.updated, archived, restockedExternalIds: r.restocked.slice(0, 100).map((x) => x.slice(0, 100)) },
+  });
 }
 
 export async function listProducts(d: Deps, storeId: string, limit = 50) {

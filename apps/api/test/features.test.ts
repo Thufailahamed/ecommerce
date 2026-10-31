@@ -4,7 +4,7 @@ import { schema } from "@convertflow/database";
 import { encrypt, decrypt } from "../src/lib/aes.js";
 import { loadCredentials, saveCredentials } from "../src/services/credentials.js";
 import { verifyStripeSignature } from "../src/services/stripe.js";
-import { Client, makeEnv, signup, validConfig } from "./helpers.js";
+import { Client, linkShop, makeEnv, signup, validConfig } from "./helpers.js";
 
 const KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
@@ -14,6 +14,7 @@ const b64 = (b: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(b)));
 async function storeFor(env: Awaited<ReturnType<typeof makeEnv>>, platform = "custom", domain = "shop.example.com", email = "owner@example.com") {
   const u = await signup(env, email);
   const s = await u.c.post("/api/v1/stores", { organizationId: u.orgId, platform, name: "S", domain, currency: "USD" });
+  if (platform === "shopify") await linkShop(env, s.json.data.id, domain);
   return { ...u, storeId: s.json.data.id as string, siteKey: s.json.data.siteKey as string };
 }
 

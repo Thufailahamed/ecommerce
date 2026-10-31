@@ -10,7 +10,7 @@ const NAV = [["How it works", "/#how"], ["Features", "/#features"], ["Platforms"
 export function SiteHeader() {
   return (
     <AutoHide className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center gap-2 px-3 pt-4">
-      <div className="pointer-events-auto flex h-12 items-center gap-1 rounded-2xl bg-[#12141c]/80 pl-4 pr-1.5 text-white ring-1 ring-white/10 backdrop-blur-xl">
+      <div className="pointer-events-auto flex h-12 items-center gap-1 rounded-2xl bg-[#0a0c14]/90 pl-4 pr-1.5 text-white shadow-[0_14px_40px_-18px_rgba(10,12,20,.55)] ring-1 ring-white/10 backdrop-blur-xl">
         <Link href="/" aria-label={`${BRAND_FULL} home`} className="mr-1 sm:mr-3"><Logo /></Link>
         <nav aria-label="Primary" className="hidden items-center text-[13px] font-medium lg:flex">
           {NAV.map(([l, h]) => <a key={h} href={h} className="rounded-xl px-3 py-2 text-white/80 transition-colors hover:bg-white/5 hover:text-white">{l}</a>)}
@@ -24,7 +24,7 @@ export function SiteHeader() {
           </div>
         </details>
       </div>
-      <Link href="/signup" className="pointer-events-auto btn btn-primary !h-12 !rounded-2xl ring-1 ring-white/25 !px-4 text-[13px] sm:!px-6">Start free</Link>
+      <Link href="/signup" className="pointer-events-auto btn btn-primary !h-12 !rounded-2xl !px-4 text-[13px] sm:!px-6">Start free</Link>
     </AutoHide>
   );
 }
@@ -37,7 +37,7 @@ const COLS = [
 
 export function SiteFooter() {
   return (
-    <footer className="relative overflow-hidden bg-canvas text-white">
+    <footer className="on-deep relative overflow-hidden bg-canvas text-white">
       <div aria-hidden className="glow-orb left-1/2 top-0 h-[30vw] w-[70vw] -translate-x-1/2 opacity-60" />
       <div aria-hidden className="display select-none whitespace-nowrap px-2 relative pt-10 text-center text-[8.4vw] leading-[0.9] text-grad">{BRAND.name}</div>
       <div className="wrap grid gap-10 border-t border-white/10 py-12 md:grid-cols-[1.4fr_2fr]">

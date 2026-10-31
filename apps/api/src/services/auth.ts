@@ -88,20 +88,5 @@ export async function organizationsFor(d: Deps, userId: string) {
     .where(eq(memberships.userId, userId));
 }
 
-export type Role = "owner" | "admin" | "editor" | "viewer";
-const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2, owner: 3 };
-
-/**
- * Tenant gate. Returns the store only if the user belongs to its organization with at least `min` role.
- * Missing and forbidden both return 404 so store ids cannot be probed across tenants.
- */
-export async function requireStore(d: Deps, user: SessionUser, storeId: string, min: Role) {
-  const [row] = await d.db
-    .select({ store: schema.stores, role: memberships.role })
-    .from(schema.stores)
-    .innerJoin(memberships, and(eq(memberships.organizationId, schema.stores.organizationId), eq(memberships.userId, user.userId)))
-    .where(eq(schema.stores.id, storeId)).limit(1);
-  if (!row || row.store.status !== "active") throw new HttpError(404, "not_found", "Store not found");
-  if (RANK[row.role] < RANK[min]) throw new HttpError(403, "forbidden", "You do not have permission to do that");
-  return { store: row.store, role: row.role };
-}
+// Store and workspace gates live in authz.ts, driven by the permission catalog in @convertflow/contracts.
+export type { Role } from "@convertflow/contracts";

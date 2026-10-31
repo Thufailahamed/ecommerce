@@ -11,7 +11,7 @@ import { detectContext } from "./detect";
 import type { FeedHandle, FeedItem } from "./feed";
 import type { RecHandle, RecProduct } from "./recommend";
 import type { ToolMods, ToolName } from "./registry";
-import type { RenderCallbacks, RenderContext, RenderHandle } from "./render";
+import type { RenderCallbacks, RenderContext, RenderHandle, SmsConfirmed } from "./render";
 
 /** Set by the build to the content-hashed file name of each per-tool script. Absent in unit tests, which register the renderers directly. */
 declare const __CF_CHUNKS__: Partial<Record<ToolName, string>> | undefined;
@@ -55,8 +55,8 @@ interface Persisted {
   visitorId?: string;
   exp?: { campaignId: string; versionId: string; group: "treatment" | "holdout"; at: number };
   cfg?: { at: number; v: unknown };
-  /** Set after an email signup so the form is not shown again. Persisted only with analytics consent, like the rest. */
-  subscribed?: { email?: true };
+  /** Set after a signup so that channel's forms are not shown again. Persisted only with analytics consent, like the rest. */
+  subscribed?: { email?: true; sms?: true };
 }
 
 interface Session {
@@ -69,7 +69,7 @@ interface Session {
   /** Feed items already reported as seen this session, so reopening the panel does not inflate the count. */
   feedSeen?: Record<string, 1>;
   /** Signed up during this tab session (kept even without analytics consent, so the form does not nag). */
-  subscribed?: { email?: true };
+  subscribed?: { email?: true; sms?: true };
 }
 
 /** Cheap structural guard. Full Zod validation happens server-side at publish; shipping Zod here would triple the bundle. */
@@ -125,9 +125,13 @@ function toolFor(c: CampaignConfig): ToolName | undefined {
   if (c.format === "toast") return "toast";
   if (c.format === "recommendation") return "upsell";
   if (c.format === "feed_item") return "feed";
+  if (c.format !== "restock" && c.form?.collect.phone) return "sms";
   if (c.format !== "restock" && c.form?.collect.email) return "email";
   return undefined;
 }
+
+/** Signup forms of either channel, which share inline placement and the form-submit metrics. */
+const isForm = (c: CampaignConfig): boolean => { const t = toolFor(c); return t === "email" || t === "sms"; };
 
 /** Where an inline signup form goes: a spot the merchant marked with data-convertflow-form, else the end of <main>, else the end of the page. */
 const formMount = (doc: Document): HTMLElement => (doc.querySelector("[data-convertflow-form]") ?? doc.querySelector("main") ?? doc.body) as HTMLElement;
@@ -190,6 +194,7 @@ export function boot(script: HTMLScriptElement): void {
         ...(cb.onProductClick ? { onClick: cb.onProductClick } : {}), ...(cb.onAdd ? { onAdd: cb.onAdd } : {}), ...(cb.canAdd ? { canAdd: cb.canAdd } : {}), ...(cb.onDismiss ? { onDismiss: cb.onDismiss } : {}),
       }, document.body, ctx);
       case "email": return t?.email?.renderSignup(document, c, cb, document.body);
+      case "sms": return t?.sms?.renderSmsSignup(document, c, cb, document.body);
       default: return renderBasic(document, c, cb, document.body, ctx);
     }
   };
@@ -250,12 +255,13 @@ export function boot(script: HTMLScriptElement): void {
     visitorType: Date.now() - persisted.firstSeen > 60_000 ? "returning" : "new",
     pagesViewed: session.pages,
   });
+  const subscribedTo = (ch: "email" | "sms"): boolean => persisted.subscribed?.[ch] === true || session.subscribed?.[ch] === true;
   const suppression = (): SuppressionState => ({
     sessionImpressions: session.impressions, visitorImpressions: persisted.visitorImpressions,
     dismissedAt: persisted.dismissedAt, clickedAt: persisted.clickedAt,
     ...(activeId && activeSlot ? { active: [{ campaignId: activeId, slot: activeSlot }] } : {}),
     ...(session.quietUntil !== undefined ? { quietUntil: session.quietUntil } : {}),
-    ...(persisted.subscribed?.email || session.subscribed?.email ? { subscribed: { email: true } } : {}),
+    ...(subscribedTo("email") || subscribedTo("sms") ? { subscribed: { ...(subscribedTo("email") ? { email: true } : {}), ...(subscribedTo("sms") ? { sms: true } : {}) } } : {}),
   });
 
   /**
@@ -417,36 +423,80 @@ export function boot(script: HTMLScriptElement): void {
   /** Floating recommendations that came back empty for a given page and cart, so they are not asked for again on every re-evaluation. */
   const noRecs = new Set<string>();
 
-  /* ---------- email signup ---------- */
+  /* ---------- signup forms (email and SMS) ---------- */
+
+  const markSubscribed = (ch: "email" | "sms"): void => {
+    session.subscribed = { ...session.subscribed, [ch]: true };
+    if (hasConsent()) persisted.subscribed = { ...persisted.subscribed, [ch]: true };
+  };
+  /**
+   * One form submission as the browser saw it: an attempt, then a success (the server accepted it) or a failure (a network
+   * or server error). Counted only with consent, like every event, and never with what the shopper typed.
+   */
+  const submitted = async <T>(c: PublishedCampaign, send: () => Promise<T>): Promise<T> => {
+    track("form_submit_attempt", c);
+    try { const r = await send(); track("form_submit_success", c); return r; }
+    catch (e) { track("form_submit_failure", c); throw e; }
+    finally { persist(); flush(); }
+  };
+  const postJson = async (path: string, body: unknown): Promise<Response> =>
+    fetch(`${api}${path}`, { method: "POST", credentials: "omit", headers: { "content-type": "text/plain;charset=UTF-8" }, body: JSON.stringify(body) });
+  /** Rejects with the server's error code as the message, so the form can show the matching words. */
+  const failWith = async (r: Response): Promise<never> => {
+    const j = (await r.json().catch(() => null)) as { error?: { code?: unknown } } | null;
+    throw new Error(typeof j?.error?.code === "string" ? j.error.code : "request_failed");
+  };
 
   /** The browser sends only the address, an optional first name and that the box was ticked. The server records the words of the form that is live. */
   const signupFor = (c: PublishedCampaign) => async (email: string, firstName?: string): Promise<void> => {
-    const r = await fetch(`${api}/api/v1/notifications/subscribe`, { method: "POST", credentials: "omit", headers: { "content-type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ siteId, campaignId: c.campaignId, email, consent: true, ...(firstName ? { firstName } : {}) }) });
-    if (!r.ok) throw new Error("signup failed");
-    session.subscribed = { email: true };
-    if (hasConsent()) persisted.subscribed = { email: true };
+    await submitted(c, async () => {
+      const r = await postJson("/api/v1/notifications/subscribe", { siteId, campaignId: c.campaignId, email, consent: true, ...(firstName ? { firstName } : {}) });
+      if (!r.ok) await failWith(r);
+    });
+    markSubscribed("email");
     track("notification_subscribed", c); persist(); flush();
   };
+  /** SMS: the number is only subscribed once the shopper types back the code texted to it. */
+  const smsFor = (c: PublishedCampaign): Pick<RenderCallbacks, "onSmsStart" | "onSmsConfirm"> => ({
+    onSmsStart: (phone: string, firstName?: string) => submitted(c, async () => {
+      const r = await postJson("/api/v1/notifications/sms/subscribe", { siteId, campaignId: c.campaignId, phone, consent: true, ...(firstName ? { firstName } : {}) });
+      if (!r.ok) await failWith(r);
+    }),
+    onSmsConfirm: async (phone: string, code: string): Promise<SmsConfirmed> => {
+      const r = await postJson("/api/v1/notifications/sms/confirm", { siteId, campaignId: c.campaignId, phone, code });
+      if (!r.ok) await failWith(r);
+      const j = (await r.json().catch(() => ({}))) as SmsConfirmed;
+      markSubscribed("sms");
+      track("notification_subscribed", c); persist(); flush();
+      return j.incentive && typeof j.incentive.code === "string" ? { incentive: j.incentive } : {};
+    },
+  });
 
   /** Inline signup forms are part of the page (a passive surface). One per campaign; kept on screen after signing up so the shopper sees the confirmation message. */
   const forms = new Map<string, { versionId: string; handle?: RenderHandle; signedUp?: true }>();
   const syncForms = (): void => {
     if (!latest) return;
-    const list = selectExperiences(latest, context(), suppression()).passive.filter((c) => toolOf(c.config) === "email" && c.config.format === "inline");
+    const list = selectExperiences(latest, context(), suppression()).passive.filter((c) => isForm(c.config) && c.config.format === "inline");
     const want = new Set(list.map((c) => c.campaignId));
     for (const [id, e] of forms) if (!want.has(id) && !e.signedUp) { e.handle?.destroy(); forms.delete(id); } // paused, expired, rolled back or off this page
     for (const c of list) {
       const have = forms.get(c.campaignId);
       if (have && (have.versionId === c.versionId || have.signedUp)) continue;
       have?.handle?.destroy();
-      const mod = need("email", syncForms);
+      const sms = toolFor(c.config) === "sms";
+      const mod = sms ? need("sms", syncForms) : need("email", syncForms);
       if (!mod) { forms.delete(c.campaignId); continue; } // loading: syncForms runs again when the script arrives
       const entry: { versionId: string; handle?: RenderHandle; signedUp?: true } = { versionId: c.versionId };
       forms.set(c.campaignId, entry);
       if (heldOut(c)) continue;
       track("campaign_eligible", c);
-      const send = signupFor(c);
-      entry.handle = mod.renderSignup(document, c.config, { onSignup: async (email, name) => { await send(email, name); entry.signedUp = true; } }, formMount(document));
+      if (sms) {
+        const cbs = smsFor(c);
+        entry.handle = window.__cfTools!.sms!.renderSmsSignup(document, c.config, { ...cbs, onSmsConfirm: async (phone, code) => { const r = await cbs.onSmsConfirm!(phone, code); entry.signedUp = true; return r; } }, formMount(document));
+      } else {
+        const send = signupFor(c);
+        entry.handle = window.__cfTools!.email!.renderSignup(document, c.config, { onSignup: async (email, name) => { await send(email, name); entry.signedUp = true; } }, formMount(document));
+      }
       track("campaign_impression", c); persist(); flush();
     }
   };
@@ -489,6 +539,7 @@ export function boot(script: HTMLScriptElement): void {
         // A timed-out toast is not a shopper decision: do not record a dismissal or start a quiet period.
         onAutoDismiss: () => { clear(); persist(); },
         ...(toolFor(winner.config) === "email" ? { onSignup: signupFor(winner) } : {}),
+        ...(toolFor(winner.config) === "sms" ? smsFor(winner) : {}),
         ...(winner.config.format === "restock" ? { onSubscribe: async (email: string) => {
           const r = await fetch(`${api}/api/v1/notifications/restock`, { method: "POST", credentials: "omit", headers: { "content-type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ siteId, productId: ctx.productId, email }) });
           if (!r.ok) throw new Error("subscribe failed");

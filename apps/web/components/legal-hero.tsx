@@ -17,8 +17,8 @@ export function LegalHero({ title }: { title: string }) {
 
   return (
     <>
-      <div aria-hidden className="fixed inset-x-0 top-0 z-50 h-0.5 bg-white/[0.04]">
-        <div className="h-full bg-gradient-to-r from-brand-solid via-brand-glow to-[#5b3bff] shadow-[0_0_12px_rgba(35,80,255,0.9)] transition-[width] duration-150" style={{ width: `${progress}%` }} />
+      <div aria-hidden className="fixed inset-x-0 top-0 z-50 h-0.5 bg-ink/[0.04]">
+        <div className="h-full bg-gradient-to-r from-brand-solid via-brand-glow to-brand-deep shadow-[0_0_12px_rgba(35,80,255,0.9)] transition-[width] duration-150" style={{ width: `${progress}%` }} />
       </div>
       <div className="relative mb-10 grid items-center gap-8 md:grid-cols-[1fr_auto]">
         <div>

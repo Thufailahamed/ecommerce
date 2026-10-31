@@ -1,10 +1,11 @@
 import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { schema } from "@convertflow/database";
 import { decrypt, encrypt } from "../lib/aes.js";
-import { hashPassword, newId, randomToken, sha256Hex, verifyPassword } from "../lib/crypto.js";
+import { hashPassword, randomToken, sha256Hex, verifyPassword } from "../lib/crypto.js";
 import { generateSecret, otpauthUrl, verifyTotp } from "../lib/totp.js";
 import { HttpError, type Deps } from "../deps.js";
 import { emailEnabled, requireEmail, templates } from "./email.js";
+import { recordAudit } from "./audit.js";
 
 const { users, authTokens, sessions } = schema;
 const HOUR = 3_600_000;
@@ -55,7 +56,7 @@ export async function resetPassword(d: Deps, token: string, newPassword: string)
   await d.db.update(users).set({ passwordHash: await hashPassword(newPassword) }).where(eq(users.id, userId));
   await d.db.delete(sessions).where(eq(sessions.userId, userId)); // every device signs out
   await d.db.delete(authTokens).where(and(eq(authTokens.userId, userId), eq(authTokens.type, "password_reset")));
-  await d.db.insert(schema.auditLogs).values({ id: newId("aud"), actorId: userId, action: "account.password_reset", targetType: "user", targetId: userId, createdAt: d.now().toISOString() });
+  await recordAudit(d, { action: "account.password_reset", actorId: userId, targetType: "user", targetId: userId });
 }
 
 /* ---------- email verification ---------- */

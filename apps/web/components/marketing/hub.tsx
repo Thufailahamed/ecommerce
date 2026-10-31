@@ -60,7 +60,7 @@ function Tile({ n, i }: { n: Node; i: number }) {
 export function IntegrationsHub() {
   const all = [...IN, ...OUT];
   return (
-    <section id="integrations" aria-label="Integrations" className="relative overflow-hidden bg-canvas pb-24 pt-20">
+    <section id="integrations" aria-label="Integrations" className="on-deep relative overflow-hidden bg-canvas pb-24 pt-20">
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-[40%] h-[60vw] w-[90vw] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(35,80,255,.28),transparent)]" />
       <div className="wrap relative">
         <Reveal className="mx-auto max-w-3xl text-center">

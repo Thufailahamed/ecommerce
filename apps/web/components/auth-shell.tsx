@@ -32,7 +32,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
           <ul className="mt-10 grid gap-3">
             {POINTS.map(({ icon, title, body }, i) => (
-              <li key={title} className="card-flat group flex items-center gap-4 rounded-2xl border border-line bg-white/[0.03] p-3.5 transition-colors hover:border-brand-tint" style={{ animation: `rise .7s var(--ease-out) ${i * 110}ms both` }}>
+              <li key={title} className="card-flat group flex items-center gap-4 rounded-2xl border border-line bg-ink/[0.03] p-3.5 transition-colors hover:border-brand-tint" style={{ animation: `rise .7s var(--ease-out) ${i * 110}ms both` }}>
                 <IconTile icon={icon} />
                 <div>
                   <div className="text-[15px] font-semibold">{title}</div>
@@ -46,18 +46,18 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <div className="relative flex items-end justify-between gap-6">
           <p className="max-w-[16rem] text-xs leading-relaxed text-deep-ink-2">Works with Shopify, WooCommerce, BigCommerce, Magento and custom stores.</p>
           <div className="relative h-28 w-44">
-            <div className="float-card absolute left-0 top-0 w-28 rotate-[-6deg] rounded-2xl bg-surface p-1.5 shadow-[0_24px_50px_-20px_rgba(35,80,255,0.8)] ring-1 ring-white/15" style={{ "--tilt": "-6deg" } as React.CSSProperties}>
+            <div className="float-card absolute left-0 top-0 w-28 rotate-[-6deg] rounded-2xl bg-surface p-1.5 shadow-[0_24px_50px_-20px_rgba(35,80,255,0.8)] ring-1 ring-line" style={{ "--tilt": "-6deg" } as React.CSSProperties}>
               <ToolVisual tool="toast" />
             </div>
-            <div className="float-card-b absolute right-0 top-6 w-28 rotate-[5deg] rounded-2xl bg-surface p-1.5 shadow-[0_24px_50px_-20px_rgba(91,59,255,0.8)] ring-1 ring-white/15" style={{ "--tilt": "5deg" } as React.CSSProperties}>
+            <div className="float-card-b absolute right-0 top-6 w-28 rotate-[5deg] rounded-2xl bg-surface p-1.5 shadow-[0_24px_50px_-20px_rgba(91,59,255,0.8)] ring-1 ring-line" style={{ "--tilt": "5deg" } as React.CSSProperties}>
               <ToolVisual tool="email" />
             </div>
           </div>
         </div>
       </aside>
 
-      <main className="relative grid place-items-center px-5 py-12">
-        <div aria-hidden className="app-glow pointer-events-none absolute inset-0 -z-0 opacity-70 lg:hidden" />
+      <main className="relative grid place-items-center bg-paper px-5 py-12">
+        <div aria-hidden className="app-glow pointer-events-none absolute inset-0 -z-0" />
         <div className="relative w-full max-w-sm space-y-6">
           <div className="flex items-center justify-between lg:hidden">
             <Link href="/" aria-label="Home"><Logo /></Link>

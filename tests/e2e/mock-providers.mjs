@@ -1,4 +1,6 @@
-// Stand-in for Klaviyo and Mailchimp so end-to-end runs can watch what the app really sends to a list provider.
+// Stand-in for Klaviyo, Mailchimp and Twilio Verify so end-to-end runs can watch what the app really sends to a provider.
+//   Twilio    POST /v2/Services/:sid/Verifications | POST /v2/Services/:sid/VerificationCheck   auth: Basic ACe2e...:e2e_token
+//             GET /__sms?phone=+1...  -> { code, sent }  (the shopper's phone: the last code texted to that number)
 // It follows the request shapes the adapters use, NOT the real services: a pass here says nothing about the live APIs.
 //   Klaviyo   GET /api/lists | POST /api/profile-import/ | POST /api/profile-subscription-bulk-(create|delete)-jobs/   key: pk_e2e_good
 //   Mailchimp GET /3.0/lists | PUT|PATCH /3.0/lists/:id/members/:md5                                                    key: e2e000-us21
@@ -11,6 +13,8 @@ let failing = { status: 0, count: 0, retryAfter: undefined, provider: undefined 
 
 const KLAVIYO_KEY = "pk_e2e_good";
 const MAILCHIMP_KEY = "e2e000-us21";
+const TWILIO_AUTH = `Basic ${Buffer.from("ACe2e00000000000000000000000000000:e2e_token").toString("base64")}`;
+const texts = new Map(); // phone -> { code, sent }
 
 createServer((req, res) => {
   const u = new URL(req.url, "http://x");
@@ -26,9 +30,31 @@ createServer((req, res) => {
     return json(200, { ok: true });
   }
 
+  if (u.pathname === "/__sms") return json(200, texts.get(u.searchParams.get("phone")) ?? { code: null, sent: 0 });
+
   let raw = "";
   req.on("data", (c) => (raw += c));
   req.on("end", () => {
+    if (u.pathname.startsWith("/v2/Services/")) {
+      const form = Object.fromEntries(new URLSearchParams(raw));
+      calls.push({ provider: "twilio", method: req.method, path: u.pathname, body: { ...form, Code: form.Code ? "***" : undefined }, authorised: req.headers["authorization"] === TWILIO_AUTH });
+      if (req.headers["authorization"] !== TWILIO_AUTH) return json(401, { code: 20003, message: "Authenticate" });
+      if (u.pathname.endsWith("/Verifications")) {
+        // Numbers ending in 0000 play a landline Twilio will not text.
+        if (!/^\+[1-9]\d{7,14}$/.test(form.To ?? "") || form.To.endsWith("0000")) return json(400, { code: 60200, message: "Invalid parameter To" });
+        const prev = texts.get(form.To);
+        texts.set(form.To, { code: String(Math.floor(100000 + Math.random() * 900000)), sent: (prev?.sent ?? 0) + 1, friendlyName: form.CustomFriendlyName });
+        return json(201, { status: "pending", to: form.To, channel: "sms" });
+      }
+      if (u.pathname.endsWith("/VerificationCheck")) {
+        const t = texts.get(form.To);
+        if (!t || !t.code) return json(404, { code: 20404, message: "not found" });
+        if (t.code !== form.Code) return json(200, { status: "pending", valid: false });
+        t.code = null;
+        return json(200, { status: "approved", valid: true });
+      }
+      return json(404, {});
+    }
     const provider = u.pathname.startsWith("/3.0/") ? "mailchimp" : u.pathname.startsWith("/api/") ? "klaviyo" : undefined;
     if (!provider) return json(404, { error: "not found" });
     const auth = req.headers["authorization"] ?? "";

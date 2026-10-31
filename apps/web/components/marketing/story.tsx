@@ -67,7 +67,7 @@ export function ScrollStory() {
   };
 
   return (
-    <section ref={track} aria-label="How a campaign gets made" className="relative h-[600vh] bg-canvas">
+    <section ref={track} aria-label="How a campaign gets made" className="on-deep relative h-[600vh] bg-canvas">
       <div ref={stage} className="sticky top-0 h-dvh overflow-hidden" style={{ "--intro": 0, "--p": 0 } as CSSProperties}>
         <div aria-hidden className="dots absolute inset-0 [mask-image:radial-gradient(70%_60%_at_50%_40%,#000,transparent)]" />
         <div aria-hidden className="glow-orb left-1/2 top-[30%] size-[70vmin] -translate-x-1/2" style={{ opacity: "calc(0.5 + var(--intro) * 0.5)" }} />

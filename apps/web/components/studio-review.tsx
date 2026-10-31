@@ -52,7 +52,7 @@ export function StudioReview({ result, domain, currency, device = "desktop", onS
       <div className="relative overflow-hidden rounded-2xl ring-1 ring-line">
         <CampaignPreview config={cfg} device={device} domain={domain} {...(currency ? { currency } : {})} {...(onSelectField ? { onSelectField } : {})} {...(selectedField ? { selectedField } : {})} />
         {busy && <div className="absolute inset-0 z-20 grid place-items-center bg-canvas/70 backdrop-blur-[2px]"><span role="status" className="inline-flex items-center gap-2 rounded-full border border-brand-tint bg-surface px-4 py-2 text-xs font-medium text-ink-2"><span aria-hidden className="size-1.5 animate-pulse rounded-full bg-brand" />Updating draft…</span></div>}
-        {onSelectField && !busy && <div aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-2xl ring-1 ring-inset ring-white/[0.04]" />}
+        {onSelectField && !busy && <div aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-2xl ring-1 ring-inset ring-ink/[0.04]" />}
       </div>
       {!hideExplanation && <div className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-sm leading-relaxed"><div className="mb-1 font-medium">Why this campaign</div>{result.explanation}</div>}
 

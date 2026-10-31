@@ -3,9 +3,10 @@ import { schema } from "@convertflow/database";
 import { CampaignConfig, SHIPPED_TOOLS, type RecommendOptions } from "@convertflow/contracts";
 import { newId } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
-import { getPlan } from "./stores.js";
+import { entitlementsFor } from "./entitlements.js";
 import { publishConfig } from "./campaigns.js";
 import { resolveSite } from "./sites.js";
+import { recordAudit } from "./audit.js";
 
 const { products, productVariants: variants, productRelationships: rel, stores } = schema;
 
@@ -199,7 +200,7 @@ export async function recommendationsForSite(d: Deps, input: { siteKey: string; 
 
   const [store] = await d.db.select().from(stores).where(eq(stores.id, site.id)).limit(1);
   if (!store || store.status !== "active") return none;
-  if (!(await getPlan(d, store.organizationId)).tools.includes("upsell")) return none;
+  if (!(await entitlementsFor(d, store.organizationId)).has("tools.upsell")) return none;
 
   return { products: await recommend(d, store.id, cfg.data.recommend, input.ctx), currency: store.currency };
 }
@@ -241,13 +242,13 @@ export async function setRelationship(d: Deps, storeId: string, actorId: string,
 
   const id = newId("rel");
   await d.db.insert(rel).values({ id, storeId, productId: from.id, relatedProductId: to.id, kind: input.kind, weight: input.weight, createdAt: d.now().toISOString() });
-  await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId, actorId, action: "relationship.set", targetType: "relationship", targetId: id, createdAt: d.now().toISOString() });
+  await recordAudit(d, { action: "relationship.set", actorId, storeId, targetType: "relationship", targetId: id });
   return { id, created: true };
 }
 
 export async function removeRelationship(d: Deps, storeId: string, actorId: string, id: string): Promise<boolean> {
   const gone = await d.db.delete(rel).where(and(eq(rel.id, id), eq(rel.storeId, storeId))).returning({ id: rel.id });
   if (gone.length === 0) return false;
-  await d.db.insert(schema.auditLogs).values({ id: newId("aud"), storeId, actorId, action: "relationship.removed", targetType: "relationship", targetId: id, createdAt: d.now().toISOString() });
+  await recordAudit(d, { action: "relationship.removed", actorId, storeId, targetType: "relationship", targetId: id });
   return true;
 }

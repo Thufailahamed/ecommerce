@@ -70,7 +70,7 @@ export function HeroDemo() {
         <div className={`mx-auto transition-[max-width] duration-300 ${device === "mobile" ? "max-w-[340px]" : "max-w-full"}`}>
           <div className="flex items-center gap-1.5 rounded-t-xl bg-[#e9e9e9] px-3 py-2">
             <span className="size-2 rounded-full bg-black/20" /><span className="size-2 rounded-full bg-black/20" /><span className="size-2 rounded-full bg-black/20" />
-            <span className="num ml-2 truncate text-[11px] text-black/50">yourstore.com/collections/trail</span>
+            <span className="num ml-2 truncate text-[11px] text-black/60">yourstore.com/collections/trail</span>
           </div>
           <div ref={frame} style={{ transform: "translateZ(0)", height: device === "mobile" ? 440 : 360 }} className="relative overflow-hidden rounded-b-xl bg-[#f6f6f6]" role="group" aria-label={`Preview of a ${p.label.toLowerCase()} on a store`}>
             <div className="px-5 pb-5 pt-14" aria-hidden>

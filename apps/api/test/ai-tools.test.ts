@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { FakeProvider, RecordedProvider, consentTemplate } from "@convertflow/ai";
-import { SHIPPED_TOOLS } from "@convertflow/contracts";
+import { SHIPPED_TOOLS, type Tool } from "@convertflow/contracts";
 import { schema } from "@convertflow/database";
 import { makeEnv, setupStore, validConfig } from "./helpers.js";
 
@@ -19,6 +19,13 @@ const PRODUCTS = [
   { externalId: "4", title: "Mystery Shoe", variants: [{ externalId: "v4" }] },
 ];
 
+/** Every tool has shipped, so a test that needs an unavailable tool takes one off the list for its duration. */
+async function withoutShipped<T>(tool: Tool, fn: () => Promise<T>): Promise<T> {
+  const shipped = SHIPPED_TOOLS as Set<Tool>;
+  shipped.delete(tool);
+  try { return await fn(); } finally { shipped.add(tool); }
+}
+
 async function setup(provider: Parameters<typeof makeEnv>[0], products: unknown[] = PRODUCTS) {
   const env = await makeEnv(provider);
   const s = await setupStore(env);
@@ -29,7 +36,7 @@ async function setup(provider: Parameters<typeof makeEnv>[0], products: unknown[
 }
 
 describe("AI studio: every shipped tool produces a reviewable draft", () => {
-  for (const [name, build, tool] of [["toast", toast, "toast"], ["feed", feed, "feed"], ["upsell", upsell, "upsell"], ["email", email, "email"]] as const) {
+  for (const [name, build, tool] of [["toast", toast, "toast"], ["feed", feed, "feed"], ["upsell", upsell, "upsell"], ["email", email, "email"], ["sms", sms, "sms"]] as const) {
     it(`${name}: creates a draft of that tool, never published`, async () => {
       const provider = new FakeProvider(() => build());
       const { env, s, gen } = await setup(provider);
@@ -56,24 +63,38 @@ describe("AI studio: every shipped tool produces a reviewable draft", () => {
       expect(r.json.data.tool).toBe("feed");
       expect(provider.inputs[0]?.tool).toBeUndefined();
     }
-    const { gen, usage } = await setup(new FakeProvider(() => sms()));
-    const r = await gen({});
-    expect(r.status).toBe(422);
-    expect(JSON.stringify(r.json)).toMatch(/sms tool is not available/);
-    expect(await usage()).toBe(1); // the provider was called, so the attempt is metered like any rejected output
+    await withoutShipped("sms", async () => {
+      const { gen, usage } = await setup(new FakeProvider(() => sms()));
+      const r = await gen({});
+      expect(r.status).toBe(422);
+      expect(JSON.stringify(r.json)).toMatch(/sms tool is not available/);
+      expect(await usage()).toBe(1); // the provider was called, so the attempt is metered like any rejected output
+    });
   });
 
-  it("accepts sms in the request schema but refuses it before calling the model while it is not shipped", async () => {
-    expect(SHIPPED_TOOLS.has("sms")).toBe(false);
-    const provider = new FakeProvider(() => sms());
-    const { env, gen, usage } = await setup(provider);
+  it("accepts every tool in the request schema but refuses one that is not shipped before calling the model", async () => {
+    await withoutShipped("sms", async () => {
+      const provider = new FakeProvider(() => sms());
+      const { env, gen, usage } = await setup(provider);
+      const r = await gen({ tool: "sms" });
+      expect(r.status).toBe(409);
+      expect(JSON.stringify(r.json)).toMatch(/tool_unavailable/);
+      expect(provider.inputs).toHaveLength(0);
+      expect(await usage()).toBe(0);
+      expect(await env.deps.db.select().from(schema.aiGenerations)).toHaveLength(0);
+      expect((await gen({ tool: "nonsense" })).status).toBe(422);
+    });
+  });
+
+  it("an SMS draft carries the SMS consent template with the opt-out instruction, never wording from the model", async () => {
+    const { gen } = await setup(new FakeProvider(() => ok(validConfig({ tool: "sms", format: "popup", goal: { type: "subscribe" }, form: { consentText: "Texts are fine, no need to reply anything" } }))));
     const r = await gen({ tool: "sms" });
-    expect(r.status).toBe(409);
-    expect(JSON.stringify(r.json)).toMatch(/tool_unavailable/);
-    expect(provider.inputs).toHaveLength(0);
-    expect(await usage()).toBe(0);
-    expect(await env.deps.db.select().from(schema.aiGenerations)).toHaveLength(0);
-    expect((await gen({ tool: "nonsense" })).status).toBe(422);
+    expect(r.status, JSON.stringify(r.json)).toBe(201);
+    const form = r.json.data.campaign.draftConfig.form;
+    expect(form.collect).toMatchObject({ phone: true });
+    expect(form.collect.email).not.toBe(true);
+    expect(form.consentText).toBe(consentTemplate("sms", "shop.example.com"));
+    expect(form.consentText).toMatch(/\bSTOP\b/);
   });
 
   it("rejects a campaign built for a different tool than the one requested", async () => {
@@ -279,7 +300,7 @@ describe("AI studio: store text is data, not instructions", () => {
 describe("AI studio: metering and access are unchanged", () => {
   it("counts a rejected attempt but not a refused tool, and enforces the monthly entitlement across tools", async () => {
     const { gen, usage } = await setup(new FakeProvider((i) => (i.tool === "feed" ? feed() : toast())));
-    expect((await gen({ tool: "sms" })).status).toBe(409);
+    expect(await withoutShipped("sms", async () => (await gen({ tool: "sms" })).status)).toBe(409);
     expect(await usage()).toBe(0);
     expect((await gen({ tool: "toast" })).status).toBe(201);
     expect((await gen({ tool: "feed" })).status).toBe(201);

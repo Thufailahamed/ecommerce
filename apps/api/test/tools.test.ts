@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SHIPPED_TOOLS, type Tool } from "@convertflow/contracts";
-import { makeEnv, setPlan, setupStore, signup, validConfig, type Env } from "./helpers.js";
+import { FakePhoneVerifier } from "@convertflow/integrations";
+import { Client, KEY, MailBox, makeEnv, setPlan, setupStore, signup, validConfig, type Env } from "./helpers.js";
+
+/** A deployment that can confirm signups: email delivery, a phone verifier, the signing key and the public API origin. */
+const capture = () => ({ email: new MailBox(), phoneVerifier: new FakePhoneVerifier(), secrets: { credentialKey: KEY, webOrigin: "https://app.example.com", apiOrigin: "https://api.example.com" } });
 
 const shipped = SHIPPED_TOOLS as Set<Tool>; // production code treats it as read-only; tests flip it to exercise the gates
 const defaults = [...shipped];
@@ -17,9 +21,12 @@ const email = (o: Cfg = {}): Cfg => validConfig({ tool: "email", format: "popup"
 const sms = (o: Cfg = {}): Cfg => validConfig({ tool: "sms", format: "popup", form: smsForm, ...o });
 const upsell = (o: Cfg = {}): Cfg => validConfig({ tool: "upsell", format: "recommendation", recommend: { source: "same_collection" }, ...o });
 
-async function setup() {
-  const env = await makeEnv();
+async function setup(opts: { capture?: boolean } = { capture: true }) {
+  const extra = opts.capture ? capture() : {};
+  const env = await makeEnv(undefined, extra);
   const s = await setupStore(env);
+  // With email delivery configured, publishing needs a confirmed address (the existing rule), so confirm it.
+  if ("email" in extra && extra.email instanceof MailBox) await new Client(env).post("/api/v1/auth/verify-email", { token: extra.email.token("owner@example.com") });
   const base = `/api/v1/stores/${s.storeId}/campaigns`;
   const create = async (cfg: unknown) => (await s.c.post(base, cfg)).json.data as { id: string; tool: string; updatedAt: string };
   const publish = async (id: string, updatedAt: string) => s.c.post(`${base}/${id}/publish`, { approve: true, approvedUpdatedAt: updatedAt });
@@ -124,6 +131,20 @@ describe("publishing gates", () => {
     }
   });
 
+  it("refuses to publish a signup form the deployment cannot confirm, so no signup is ever silently stranded", async () => {
+    const { env, s, create, publish } = await setup({ capture: false });
+    for (const t of ["email", "sms"] as const) shipped.add(t);
+    await setPlan(env, s.orgId, "growth");
+    const e = await create(email());
+    const er = await publish(e.id, e.updatedAt);
+    expect(er.status).toBe(409);
+    expect(er.json.error.code).toBe("email_unavailable");
+    const m = await create(sms());
+    const mr = await publish(m.id, m.updatedAt);
+    expect(mr.status).toBe(409);
+    expect(mr.json.error.code).toBe("sms_unavailable");
+  });
+
   it("a downgrade-to-free organisation cannot publish paid tools even if it once could", async () => {
     const { env, s, create, publish } = await setup();
     shipped.add("sms");
@@ -143,14 +164,16 @@ describe("tool warnings from validate", () => {
     return r.json.data as { valid: boolean; issues: string[]; warnings: string[] };
   };
 
-  it("flags SMS consent text without an opt-out or rates notice, and always asks for legal review", async () => {
-    const weak = await warn(sms({ form: { ...smsForm, consentText: "Sign me up for texts from this store please." } }));
-    expect(weak.valid).toBe(true);
-    expect(weak.warnings.join("\n")).toMatch(/opt out/i);
-    expect(weak.warnings.join("\n")).toMatch(/rates/i);
-    expect(weak.warnings.join("\n")).toMatch(/reviewed/i);
+  it("rejects SMS consent text without an opt-out instruction, warns about a missing rates notice, and always asks for legal review", async () => {
+    const noStop = await warn(sms({ form: { ...smsForm, consentText: "Sign me up for texts from this store please." } }));
+    expect(noStop.valid).toBe(false);
+    expect(noStop.issues.join("\n")).toMatch(/Reply STOP to opt out/);
+    const noRates = await warn(sms({ form: { ...smsForm, consentText: "Sign me up for texts from this store. Reply STOP to opt out." } }));
+    expect(noRates.valid).toBe(true);
+    expect(noRates.warnings.join("\n")).toMatch(/rates/i);
+    expect(noRates.warnings.join("\n")).toMatch(/reviewed/i);
     const good = await warn(sms());
-    expect(good.warnings.join("\n")).not.toMatch(/opt out/i);
+    expect(good.warnings.join("\n")).not.toMatch(/rates may apply/i);
     expect(good.warnings.join("\n")).toMatch(/reviewed/i); // never claims compliance
   });
   it("flags immediate signup popups, and rejects single opt-in outright because it is not available", async () => {

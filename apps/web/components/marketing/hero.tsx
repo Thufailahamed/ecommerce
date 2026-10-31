@@ -79,7 +79,7 @@ export function Hero() {
       </div>
 
       <div className="wrap relative z-10 flex flex-col items-center text-center">
-        <p className="hero-in pill !bg-white/[0.06] ring-1 ring-white/10 backdrop-blur" style={{ "--d": "1.3s" } as CSSProperties}>
+        <p className="hero-in pill !bg-white shadow-[var(--shadow-card)] ring-1 ring-line backdrop-blur" style={{ "--d": "1.3s" } as CSSProperties}>
           <span className="rounded-full bg-brand-solid px-2 py-0.5 text-[11px] font-bold text-white">New</span>AI campaign studio for any online store
         </p>
         <h1 className="display mt-6 text-[clamp(2.4rem,7.4vw,6.5rem)] leading-[0.95]">
@@ -106,11 +106,11 @@ export function Hero() {
         {/* Goal prompt */}
         <form action="/signup" method="get" className="hero-in group relative mt-8 w-full max-w-2xl" style={{ "--d": "1.9s" } as CSSProperties}>
           <div aria-hidden className="absolute -inset-px rounded-[1.4rem] bg-[conic-gradient(from_var(--ang),#2350ff,#8fb0ff,#1636b8,#2350ff)] opacity-70 blur-[2px] [animation:spin-ang_6s_linear_infinite]" />
-          <div className="relative flex items-center gap-2 rounded-[1.35rem] bg-[#0b0d14] p-2 pl-4">
+          <div className="relative flex items-center gap-2 rounded-[1.35rem] bg-white p-2 pl-4 shadow-[0_20px_50px_-24px_rgba(35,80,255,.45)]">
             <Sparkles className="size-5 shrink-0 text-brand" aria-hidden />
             <label htmlFor="hero-goal" className="sr-only">Describe a goal</label>
             <input id="hero-goal" name="goal" autoComplete="off" value={typed ?? auto} onChange={(e) => setTyped(e.target.value)} onFocus={() => setTyped((t) => t ?? "")}
-              placeholder="Describe a goal…" className="min-w-0 flex-1 bg-transparent py-3 text-left text-[15px] text-white outline-none placeholder:text-white/35" />
+              placeholder="Describe a goal…" className="min-w-0 flex-1 bg-transparent py-3 text-left text-[15px] text-ink outline-none placeholder:text-ink-3" />
             <button type="submit" className="btn btn-primary !h-12 shrink-0 !px-6 text-[14px]">Draft it <ArrowRight className="size-4" aria-hidden /></button>
           </div>
         </form>
@@ -123,9 +123,9 @@ export function Hero() {
       <div aria-hidden className="wrap relative mt-14 md:mt-16 [perspective:1600px]">
         <div ref={stage} className="hero-pop relative mx-auto max-w-[1100px] [transform-style:preserve-3d]" style={{ "--d": "2.1s", "--flat": 0, "--mx": 0, "--my": 0 } as CSSProperties}>
           <div className="transition-transform duration-300 ease-out [transform-style:preserve-3d]" style={{ transform: "rotateX(calc((1 - var(--flat)) * 22deg + var(--my) * -4deg)) rotateY(calc(var(--mx) * 5deg)) scale(calc(0.92 + var(--flat) * 0.08))", transformOrigin: "50% 0%" }}>
-            <div aria-hidden className="absolute -inset-x-10 -top-10 bottom-10 -z-10 rounded-[3rem] bg-[radial-gradient(60%_60%_at_50%_30%,rgba(35,80,255,.45),transparent_70%)] blur-2xl" />
+            <div aria-hidden className="absolute -inset-x-10 -top-10 bottom-10 -z-10 rounded-[3rem] bg-[radial-gradient(60%_60%_at_50%_30%,rgba(35,80,255,.28),transparent_70%)] blur-2xl" />
             {/* browser window */}
-            <div className="overflow-hidden rounded-[1.5rem] bg-[#0b0d14] p-1.5 shadow-[0_60px_120px_-40px_rgba(0,0,0,.9)] ring-1 ring-white/15 md:rounded-[1.75rem] md:p-2">
+            <div className="overflow-hidden rounded-[1.5rem] bg-[#0b0d14] p-1.5 shadow-[0_60px_120px_-40px_rgba(10,12,20,.55)] ring-1 ring-black/10 md:rounded-[1.75rem] md:p-2">
               <div className="flex items-center gap-3 px-3 pb-2 pt-1 md:px-4">
                 <span className="flex gap-1.5">{["#ff5f57", "#febc2e", "#28c840"].map((c) => <span key={c} className="size-2.5 rounded-full" style={{ background: c }} />)}</span>
                 <span className="mx-auto flex min-w-0 items-center gap-2 rounded-lg bg-white/5 px-3 py-1 text-[11px] text-white/50 md:text-[12px]"><Lock className="size-3" />{now.store.toLowerCase().replace(/[^a-z]+/g, "")}.store</span>
@@ -140,7 +140,7 @@ export function Hero() {
 
             {/* studio card: the goal that produced this campaign, and the checks it passed */}
             <div className="absolute -left-4 top-[18%] hidden w-[17.5rem] text-left md:block lg:-left-16 xl:-left-24" style={{ transform: "translateZ(60px)" }}>
-              <div className="float-card rounded-2xl bg-[#0b0d14]/95 p-4 text-white shadow-[0_30px_60px_-20px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur">
+              <div className="float-card rounded-2xl bg-[#0b0d14]/95 p-4 text-white shadow-[0_30px_60px_-20px_rgba(10,12,20,.55)] ring-1 ring-white/10 backdrop-blur">
                 <p className="flex items-center gap-2 text-[12px] font-semibold"><LogoMark className="size-4" />AI studio<span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/60">Draft</span></p>
                 <p key={`g${scene}`} className="hero-in mt-3 rounded-xl bg-brand-solid px-3 py-2 text-[12.5px] leading-snug" style={{ "--d": "0s" } as CSSProperties}>{now.goal}</p>
                 <ul className="mt-3 space-y-1.5">
@@ -155,29 +155,29 @@ export function Hero() {
 
             {/* approval card with a 3D block, on the other side */}
             <div className="absolute -right-4 bottom-[14%] hidden w-[15rem] text-left md:block lg:-right-14 xl:-right-20" style={{ transform: "translateZ(90px)" }}>
-              <div className="float-card-b flex items-center gap-3 rounded-2xl bg-white p-3 text-[#0a0c14] shadow-[0_30px_60px_-20px_rgba(0,0,0,.9)]">
+              <div className="float-card-b flex items-center gap-3 rounded-2xl bg-white p-3 text-[#0a0c14] shadow-[0_30px_60px_-20px_rgba(10,12,20,.4)] ring-1 ring-black/5">
                 <span className="relative size-14 shrink-0 overflow-hidden rounded-xl bg-brand-solid"><BlockScene kind="stack" tone="white" size={16} className="absolute inset-0" /></span>
                 <span className="min-w-0">
-                  <span className="block text-[11px] text-black/50">You approved</span>
+                  <span className="block text-[11px] text-black/60">You approved</span>
                   <span className="block truncate text-[14px] font-bold capitalize">{now.word}, v3</span>
                   <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-brand-solid"><span className="size-1.5 rounded-full bg-ok" />Live on {now.store}</span>
                 </span>
               </div>
             </div>
             <div className="absolute -right-6 -top-10 hidden size-28 md:block lg:-right-16" style={{ transform: "translateZ(120px)" }}><BlockScene kind="orbit" tone="blue" size={40} className="size-full !overflow-visible" /></div>
-            <div className="absolute -bottom-8 left-[12%] hidden size-24 md:block" style={{ transform: "translateZ(100px)" }}><BlockScene kind="spin" tone="white" size={34} className="size-full !overflow-visible" /></div>
+            <div className="absolute -bottom-8 left-[12%] hidden size-24 md:block" style={{ transform: "translateZ(100px)" }}><BlockScene kind="spin" tone="dark" size={34} className="size-full !overflow-visible" /></div>
           </div>
         </div>
       </div>
 
       {/* industry photo strip */}
-      <div className="relative mt-16 border-t border-white/10 bg-canvas/60 py-5 backdrop-blur md:mt-24">
+      <div className="relative mt-16 border-t border-line bg-paper/70 py-5 backdrop-blur md:mt-24">
         <div className="marquee-pause overflow-hidden">
           <div className="marquee" style={{ "--marquee-dur": "38s" } as CSSProperties}>
             {[0, 1].map((k) => (
               <div key={k} className="flex shrink-0 gap-3 pr-3" aria-hidden={k === 1}>
                 {INDUSTRIES.map(([label, img]) => (
-                  <a key={label} href="#use-cases" tabIndex={k ? -1 : 0} className="group flex items-center gap-3 rounded-full bg-surface py-1.5 pl-1.5 pr-5 ring-1 ring-white/10 transition-colors hover:bg-brand-solid">
+                  <a key={label} href="#use-cases" tabIndex={k ? -1 : 0} className="group flex items-center gap-3 rounded-full bg-surface py-1.5 pl-1.5 pr-5 ring-1 ring-line transition-colors hover:bg-brand-solid hover:text-white hover:ring-brand-solid">
                     <span className="size-9 overflow-hidden rounded-full"><Photo k={img} w={120} className="size-full transition-transform duration-500 group-hover:scale-110" /></span>
                     <span className="text-[14px] font-semibold">{label}</span>
                   </a>

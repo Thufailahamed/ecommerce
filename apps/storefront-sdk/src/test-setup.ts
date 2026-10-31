@@ -4,3 +4,4 @@ import "./chunk-toast";
 import "./chunk-feed";
 import "./chunk-upsell";
 import "./chunk-email";
+import "./chunk-sms";

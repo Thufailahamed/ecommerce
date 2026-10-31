@@ -1,13 +1,23 @@
-# UNVERIFIED: written to Shopify's documented app configuration format but never deployed
-# (no Partner account was available). Replace placeholders, then run `shopify app deploy` from this directory.
+# UNVERIFIED: written to Shopify's documented app configuration format but never deployed (no Partner account was
+# available). Replace the client id and the example.com origins, then run `shopify app deploy` from this directory.
+# Server-side install, catalog sync, webhooks and billing are implemented and tested against a fake Shopify
+# (apps/api/test/shopify.test.ts); docs/shopify.md lists the steps that verify them on a development store.
 client_id = "REPLACE_WITH_PARTNER_DASHBOARD_CLIENT_ID"
 name = "ConvertFlow AI"
-application_url = "https://app.example.com"
+# Shopify opens this on install (App Store) and on every launch from the Shopify admin, signed with an HMAC.
+application_url = "https://api.example.com/api/v1/shopify/install"
+# The dashboard is a standalone web app, not embedded in the Shopify admin. Check the current App Store requirements
+# (embedded apps / session tokens) before submitting: see docs/shopify.md.
 embedded = false
 
 [access_scopes]
-# Read-only catalog + inventory. Orders arrive via webhook; no customer data scopes are requested.
-scopes = "read_products,read_inventory"
+# Read-only except write_pixels (the app creates its own web pixel). read_orders because Shopify delivers orders/*
+# webhooks only to apps holding it (and that have requested protected customer data access in the Partner Dashboard).
+# read_themes: to tell the merchant whether the app embed is on. write_pixels + read_customer_events: webPixelCreate.
+# Must equal SHOPIFY_SCOPES on the API Worker (`pnpm lint` checks).
+scopes = "read_products,read_inventory,read_orders,read_themes,write_pixels,read_customer_events"
+# Non-embedded app: Shopify sends the merchant to application_url, which starts the authorization code grant itself.
+use_legacy_install_flow = true
 
 [auth]
 redirect_urls = ["https://api.example.com/api/v1/shopify/callback"]
@@ -16,7 +26,7 @@ redirect_urls = ["https://api.example.com/api/v1/shopify/callback"]
 api_version = "2026-10"
 
   [[webhooks.subscriptions]]
-  topics = ["app/uninstalled", "products/create", "products/update", "products/delete", "orders/create"]
+  topics = ["app/uninstalled", "app_subscriptions/update", "products/create", "products/update", "products/delete", "inventory_levels/update", "orders/create"]
   uri = "https://api.example.com/api/v1/webhooks/shopify"
 
   [[webhooks.subscriptions]]

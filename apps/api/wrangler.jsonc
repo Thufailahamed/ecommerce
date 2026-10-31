@@ -1,19 +1,27 @@
 {
-  // Resource ids below are placeholders: create them with `wrangler d1 create`, `wrangler kv namespace create`, `wrangler queues create`.
+  // Top level = development: `wrangler dev`, `pnpm dev:local`, the e2e suite, and the existing workers.dev development
+  // deployment whose D1/KV ids are below. Staging and production are under "env" and declare EVERY binding and var again:
+  // Wrangler does not inherit d1_databases, kv_namespaces, queues, ai or vars into an environment. Their REPLACE_WITH_…
+  // ids are placeholders until `wrangler d1 create` / `kv namespace create` / `queues create` (docs/deployment.md §1).
   "name": "convertflow-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  // Secrets (CREDENTIAL_KEY, RESEND_API_KEY, EMAIL_FROM, STRIPE_*, SHOPIFY_API_SECRET, TURNSTILE_SECRET) are set with
-  // `wrangler secret put`, never here. See docs/deployment.md for what each one enables.
+  // Secrets (CREDENTIAL_KEY, RESEND_API_KEY, EMAIL_FROM, STRIPE_*, SHOPIFY_API_SECRET, TWILIO_AUTH_TOKEN, TURNSTILE_SECRET,
+  // AI_GATEWAY_TOKEN) are set with `wrangler secret put [--env <env>]`, never here. docs/deployment.md lists what each enables.
   "vars": {
     "ALLOWED_ORIGIN": "https://convertflow-web.thufailahamed627.workers.dev",
     "API_ORIGIN": "https://convertflow-api.thufailahamed627.workers.dev",
     // Cheap, strong default. AI Gateway provides caching/observability and a stable route for model changes.
     // "default" is auto-created by AI Gateway on the first authenticated request; use a named gateway if preferred.
     "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    "AI_GATEWAY_ID": "default"
+    "AI_GATEWAY_ID": "default",
+    // AI store builder. Provider-first ids go through AI Gateway's OpenAI-compatible endpoint, so any model the gateway
+    // can route works ("anthropic/…", "openai/…" with keys stored in the gateway). Set AI_GATEWAY_ACCOUNT_ID here and the
+    // AI_GATEWAY_TOKEN secret to use REST; without them the AI binding above is used (Workers AI models only).
+    "BUILDER_AI_MODEL": "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "BUILDER_IMAGE_MODEL": "@cf/black-forest-labs/flux-1-schnell"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "convertflow", "database_id": "e9f41fa4-5a92-469a-8890-ab7be3d8e007", "migrations_dir": "../../packages/database/migrations" }
@@ -27,7 +35,56 @@
   },
   "triggers": { "crons": ["0 3 * * *"] },
   "env": {
-    "staging": { "name": "convertflow-api-staging", "vars": { "ALLOWED_ORIGIN": "https://staging.example.com", "API_ORIGIN": "https://api-staging.example.com" } },
-    "production": { "name": "convertflow-api-production", "vars": { "ALLOWED_ORIGIN": "https://app.example.com", "API_ORIGIN": "https://api.example.com" } }
+    "staging": {
+      "name": "convertflow-api-staging",
+      "vars": {
+        "ALLOWED_ORIGIN": "https://app-staging.example.com",
+        "API_ORIGIN": "https://api-staging.example.com",
+        "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "AI_GATEWAY_ID": "default",
+        "BUILDER_AI_MODEL": "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "BUILDER_IMAGE_MODEL": "@cf/black-forest-labs/flux-1-schnell",
+        // Shopify development stores and app review: test charges only.
+        "SHOPIFY_BILLING_TEST": "true",
+        "SHOPIFY_API_KEY": "REPLACE_WITH_STAGING_SHOPIFY_CLIENT_ID",
+        "TWILIO_ACCOUNT_SID": "REPLACE_WITH_TWILIO_ACCOUNT_SID",
+        "TWILIO_VERIFY_SERVICE_SID": "REPLACE_WITH_STAGING_VERIFY_SERVICE_SID"
+      },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "convertflow-staging", "database_id": "REPLACE_WITH_STAGING_D1_ID", "migrations_dir": "../../packages/database/migrations" }
+      ],
+      "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "REPLACE_WITH_STAGING_KV_ID" }],
+      "ai": { "binding": "AI" },
+      "queues": {
+        "producers": [{ "binding": "EVENTS_QUEUE", "queue": "convertflow-events-staging" }],
+        "consumers": [{ "queue": "convertflow-events-staging", "max_batch_size": 50, "max_batch_timeout": 5, "max_retries": 5, "dead_letter_queue": "convertflow-events-dlq-staging" }]
+      },
+      "triggers": { "crons": ["0 3 * * *"] }
+    },
+    "production": {
+      "name": "convertflow-api-production",
+      "vars": {
+        "ALLOWED_ORIGIN": "https://app.example.com",
+        "API_ORIGIN": "https://api.example.com",
+        "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "AI_GATEWAY_ID": "default",
+        "BUILDER_AI_MODEL": "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "BUILDER_IMAGE_MODEL": "@cf/black-forest-labs/flux-1-schnell",
+        "SHOPIFY_API_KEY": "REPLACE_WITH_PRODUCTION_SHOPIFY_CLIENT_ID",
+        "TWILIO_ACCOUNT_SID": "REPLACE_WITH_TWILIO_ACCOUNT_SID",
+        "TWILIO_VERIFY_SERVICE_SID": "REPLACE_WITH_PRODUCTION_VERIFY_SERVICE_SID"
+        // Never set any *_BASE_URL override here: those exist for mocks only.
+      },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "convertflow-production", "database_id": "REPLACE_WITH_PRODUCTION_D1_ID", "migrations_dir": "../../packages/database/migrations" }
+      ],
+      "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "REPLACE_WITH_PRODUCTION_KV_ID" }],
+      "ai": { "binding": "AI" },
+      "queues": {
+        "producers": [{ "binding": "EVENTS_QUEUE", "queue": "convertflow-events-production" }],
+        "consumers": [{ "queue": "convertflow-events-production", "max_batch_size": 50, "max_batch_timeout": 5, "max_retries": 5, "dead_letter_queue": "convertflow-events-dlq-production" }]
+      },
+      "triggers": { "crons": ["0 3 * * *"] }
+    }
   }
 }

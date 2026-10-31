@@ -16,6 +16,7 @@
     "@convertflow/contracts": "workspace:*",
     "@convertflow/database": "workspace:*",
     "@convertflow/integrations": "workspace:*",
+    "@convertflow/store-builder": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",
     "zod": "^4.6.7"

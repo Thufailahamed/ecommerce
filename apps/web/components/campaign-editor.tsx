@@ -12,6 +12,7 @@ import { TOOLS } from "@/lib/tools";
 import { defaultConfig, type EditorTool } from "@/lib/campaign-defaults";
 import { fromLocalDateTimeInput, toLocalDateTimeInput } from "@/lib/local-datetime";
 import { Badge, Button, ErrorNote, Field, Input, Select, Textarea, statusTone } from "./ui";
+import { SMS_COUNTRIES } from "@convertflow/storefront-sdk";
 import { CampaignPreview, type Device } from "./campaign-preview";
 import { VersionHistory } from "./version-history";
 
@@ -73,7 +74,7 @@ function ChoiceChips({ label, options, values, onChange }: { label: string; opti
         return (
           <button key={o.value} type="button" aria-pressed={on}
             onClick={() => onChange(on ? values.filter((v) => v !== o.value) : [...values, o.value])}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${on ? "bg-brand-solid text-white ring-brand-tint" : "bg-white/[0.03] text-ink-2 ring-line hover:text-ink"}`}>
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${on ? "bg-brand-solid text-white ring-brand-tint" : "bg-ink/[0.03] text-ink-2 ring-line hover:text-ink"}`}>
             {o.label}
           </button>
         );
@@ -107,7 +108,7 @@ function ProductCondition({ c, products, onChange }: { c: Extract<Condition, { f
       {selected.map((id) => {
         const title = products.find((p) => p.id === id)?.title ?? id;
         return (
-          <span key={id} className="inline-flex max-w-[13rem] items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-ink-2 ring-1 ring-line">
+          <span key={id} className="inline-flex max-w-[13rem] items-center gap-1 rounded-full bg-ink/[0.06] px-2.5 py-1 text-xs text-ink-2 ring-1 ring-line">
             <span className="truncate" title={title}>{title}</span>
             <button type="button" aria-label={`Remove product ${title}`} className="text-ink-3 hover:text-danger" onClick={() => onChange({ ...c, value: selected.filter((x) => x !== id) })}><X className="size-3" /></button>
           </span>
@@ -229,11 +230,11 @@ function LaunchDrawer({ open, onClose, children }: { open: boolean; onClose(): v
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <button type="button" aria-label="Close review" tabIndex={-1} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <button type="button" aria-label="Close review" tabIndex={-1} className="absolute inset-0 bg-[#0a0c14]/45 backdrop-blur-sm" onClick={onClose} />
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby="launch-h" tabIndex={-1} className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-surface shadow-2xl outline-none">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 id="launch-h" className="font-display text-sm font-bold uppercase tracking-[0.14em]">Review and launch</h2>
-          <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-ink-2 hover:bg-white/[0.06] hover:text-ink" onClick={onClose}><X className="size-5" /></button>
+          <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-ink-2 hover:bg-ink/[0.06] hover:text-ink" onClick={onClose}><X className="size-5" /></button>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">{children}</div>
       </div>
@@ -248,6 +249,8 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
   const isToast = cfg.tool === "toast";
   const isFeed = cfg.tool === "feed";
   const isEmail = cfg.tool === "email" && cfg.format !== "restock"; // legacy back-in-stock forms keep the classic editor
+  const isSms = cfg.tool === "sms";
+  const isForm = isEmail || isSms;
   const isUpsell = cfg.tool === "upsell";
   // What the merchant is typing, kept apart from the saved value: parsing on every keystroke would swallow a trailing comma or an emptied number.
   const [collectionsText, setCollectionsText] = useState(() => cfg.recommend?.collectionIds.join(", ") ?? "");
@@ -255,7 +258,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
   /** An inline recommendation block is part of the page, like the feed: no trigger, per-visit caps or dismissal. */
   const passiveUpsell = isUpsell && cfg.recommend?.placement !== "toast";
   /** An inline signup form sits in the page like the feed and inline recommendations: no trigger, per-visit caps or dismissal. */
-  const passiveForm = isEmail && cfg.format === "inline";
+  const passiveForm = isForm && cfg.format === "inline";
   const [row, setRow] = useState(campaign);
   const [device, setDevice] = useState<Device>("desktop");
   const [busy, setBusy] = useState<null | "save" | "publish">(null);
@@ -281,6 +284,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
     if (isToast && cfg.toast?.kind === "coupon" && !cfg.promotion) w.push("Add a discount code below, or this coupon toast has nothing to reveal.");
     if (isToast && cfg.trigger.type === "exit_intent") w.push("Exit intent only works on desktop with a mouse.");
     if (isEmail && cfg.form && !/unsubscribe|opt[- ]?out/i.test(cfg.form.consentText)) w.push("Your consent text does not mention that shoppers can unsubscribe.");
+    if (isSms && cfg.form && !/rates/i.test(cfg.form.consentText)) w.push("SMS consent text usually says that message and data rates may apply.");
     if (isUpsell && cfg.recommend) {
       if (catalog.data && catalog.data.length === 0) w.push("Your catalog is empty. Recommendations only use products from your catalog, with their real prices and stock, so nothing will show until you import or sync it.");
       if (cfg.recommend.placement === "cart" && !cfg.targeting.conditions.some((x) => x.field === "page_type" || x.field === "cart_item_count" || x.field === "cart_subtotal")) w.push("A cart block should target the cart page or a cart rule, otherwise it may appear where there is no cart.");
@@ -288,7 +292,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
       if (cfg.recommend.source === "alternatives") w.push("Alternatives only show on a product your catalog says is out of stock, so keep your stock levels synced.");
     }
     return w;
-  }, [cfg, isToast, isEmail, isUpsell, catalog.data, store.platform]);
+  }, [cfg, isToast, isEmail, isSms, isUpsell, catalog.data, store.platform]);
 
   const fail = (e: unknown) => {
     if (e instanceof ApiError) { setError(e.message); setIssues(Array.isArray(e.details) ? e.details.map((d) => typeof d === "string" ? d : JSON.stringify(d)) : []); }
@@ -345,14 +349,14 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
     <BuilderHost><div className="fixed inset-0 z-40 flex flex-col bg-canvas">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-surface/80 px-3 py-2 backdrop-blur sm:px-4">
         <Link href="/app/campaigns" aria-label="Back to campaigns" onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave without saving?")) e.preventDefault(); }}
-          className="inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-2 transition-colors hover:bg-white/[0.06] hover:text-ink">
+          className="inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-2 transition-colors hover:bg-ink/[0.06] hover:text-ink">
           <ArrowLeft className="size-4" aria-hidden /><span className="hidden sm:inline">Campaigns</span>
         </Link>
         <span aria-hidden className="hidden h-5 w-px bg-line sm:block" />
         <span className="hidden text-sm text-ink-3 md:inline">{toolName}</span>
         <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto sm:max-w-sm sm:flex-1">
           <Input aria-label="Campaign name" value={cfg.name} onChange={(e) => patch((c) => ({ ...c, name: e.target.value }))} className="h-9 min-w-0 flex-1 font-medium" />
-          <div className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-white/[0.02] p-0.5 lg:hidden" role="group" aria-label="View">
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-ink/[0.02] p-0.5 lg:hidden" role="group" aria-label="View">
             <button type="button" aria-pressed={pane === "edit"} onClick={() => setPane("edit")} className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${pane === "edit" ? "bg-brand-solid text-white" : "text-ink-2"}`}>Edit</button>
             <button type="button" aria-pressed={pane === "preview"} onClick={() => setPane("preview")} className={`inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium ${pane === "preview" ? "bg-brand-solid text-white" : "text-ink-2"}`}><Eye className="size-3.5" aria-hidden />Preview</button>
           </div>
@@ -361,7 +365,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
         <span className="num hidden text-xs text-ink-3 md:inline" role="status">{busy === "save" ? "Saving…" : row && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}</span>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="hidden items-center gap-1 rounded-full border border-line bg-white/[0.02] p-0.5 sm:flex" role="group" aria-label="Device">
+          <div className="hidden items-center gap-1 rounded-full border border-line bg-ink/[0.02] p-0.5 sm:flex" role="group" aria-label="Device">
             <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")} className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${device === "desktop" ? "bg-brand-solid text-white" : "text-ink-2 hover:text-ink"}`}><Monitor className="size-4" aria-hidden />Desktop</button>
             <button type="button" aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")} className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${device === "mobile" ? "bg-brand-solid text-white" : "text-ink-2 hover:text-ink"}`}><Smartphone className="size-4" aria-hidden />Mobile</button>
           </div>
@@ -377,14 +381,14 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
             const on = t.id === current;
             return (
               <button key={t.id} id={`tab-${t.id}`} role="tab" type="button" aria-selected={on} aria-controls={`panel-${t.id}`} tabIndex={on ? 0 : -1} onKeyDown={onTabKey} onClick={() => { setTab(t.id); setPane("edit"); }}
-                className={`relative flex min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium transition-colors lg:flex-none ${on ? "bg-brand-soft text-ink ring-1 ring-brand-tint" : "text-ink-2 hover:bg-white/[0.05] hover:text-ink"}`}>
+                className={`relative flex min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium transition-colors lg:flex-none ${on ? "bg-brand-soft text-ink ring-1 ring-brand-tint" : "text-ink-2 hover:bg-ink/[0.05] hover:text-ink"}`}>
                 <t.icon className={`size-5 ${on ? "text-brand" : ""}`} aria-hidden />{t.label}
                 {t.id === "audience" && cfg.targeting.conditions.length === 0 && <span aria-hidden className="absolute right-2 top-2 size-1.5 rounded-full bg-warn" />}
               </button>
             );
           })}
           </div>
-          <Link href="/app/studio" className="flex min-w-[4.25rem] flex-none flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium text-ink-2 transition-colors hover:bg-white/[0.05] hover:text-ink lg:mt-auto lg:flex-none"
+          <Link href="/app/studio" className="flex min-w-[4.25rem] flex-none flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium text-ink-2 transition-colors hover:bg-ink/[0.05] hover:text-ink lg:mt-auto lg:flex-none"
             onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave without saving?")) e.preventDefault(); }}>
             <Sparkles className="size-5 text-brand" aria-hidden />AI Chat
           </Link>
@@ -398,7 +402,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
 
         {panel("content", <>
         <Section title="Format and message">
-          {!isToast && !isFeed && !isEmail && !isUpsell && <Field label="Format"><Select value={cfg.format} onChange={(e) => {
+          {!isToast && !isFeed && !isForm && !isUpsell && <Field label="Format"><Select value={cfg.format} onChange={(e) => {
             const format = e.target.value as Cfg["format"];
             patch((c) => format === "restock" && c.format !== "restock"
               ? { ...c, format, creative: { ...c.creative, headline: "Notify me when it's back", body: "Leave your email and we'll tell you once.", ctaLabel: "Notify me", ctaUrl: "/" },
@@ -410,7 +414,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           <Field label="Body"><Textarea rows={2} maxLength={280} value={cfg.creative.body} onChange={(e) => patch((c) => ({ ...c, creative: { ...c.creative, body: e.target.value } }))} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={isUpsell ? "Add button label" : "Button label"}><Input value={cfg.creative.ctaLabel} maxLength={32} onChange={(e) => patch((c) => ({ ...c, creative: { ...c.creative, ctaLabel: e.target.value } }))} /></Field>
-            {!isEmail && !isUpsell && <Field label="Button link" hint="Path or https URL"><Input value={cfg.creative.ctaUrl} onChange={(e) => patch((c) => ({ ...c, creative: { ...c.creative, ctaUrl: e.target.value } }))} /></Field>}
+            {!isForm && !isUpsell && <Field label="Button link" hint="Path or https URL"><Input value={cfg.creative.ctaUrl} onChange={(e) => patch((c) => ({ ...c, creative: { ...c.creative, ctaUrl: e.target.value } }))} /></Field>}
           </div>
         </Section>
 
@@ -482,18 +486,31 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
           </Section>
         )}
 
-        {isEmail && cfg.form && (
-          <Section title="Email signup">
+        {isForm && cfg.form && (
+          <Section title={isSms ? "SMS signup" : "Email signup"}>
             <Field label="Style" hint={cfg.format === "inline" ? "Appears in the page where you put an element with the attribute data-convertflow-form, or at the end of the main content if there is none. It is not triggered: it is simply part of the page." : cfg.format === "announcement_bar" ? "A slim bar along the top or bottom edge." : undefined}>
               <Select value={cfg.format} onChange={(e) => patch((c) => ({ ...c, format: e.target.value as Cfg["format"] }))}><option value="popup">Popup</option><option value="slide_in">Slide-in</option><option value="announcement_bar">Announcement bar</option><option value="inline">Inline (in the page)</option></Select>
             </Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cfg.form.collect.firstName} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, collect: { ...c.form!.collect, firstName: e.target.checked } } }))} />Also ask for a first name (optional for the shopper)</label>
-            <Field label="Consent text" hint="Shown next to an unticked checkbox. The exact words are saved with every signup as proof of consent, so say what they will receive and that they can unsubscribe.">
-              <Textarea rows={3} maxLength={600} value={cfg.form.consentText} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, consentText: e.target.value } }))} />
+            {isSms && (
+              <Field label="Default country" hint="Pre-selects the dial code. Shoppers can pick another country or type a full international number.">
+                <Select aria-label="Default country" value={cfg.form.defaultCountry} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, defaultCountry: e.target.value } }))}>
+                  {Object.keys(SMS_COUNTRIES).map((iso) => <option key={iso} value={iso}>{iso} (+{SMS_COUNTRIES[iso]![0]})</option>)}
+                </Select>
+              </Field>
+            )}
+            <Field label="Consent text" hint={isSms
+              ? "Shown next to an unticked checkbox and saved with every signup as proof of consent. It must say how to opt out (Reply STOP); most carriers also expect the message frequency and that message and data rates may apply."
+              : "Shown next to an unticked checkbox. The exact words are saved with every signup as proof of consent, so say what they will receive and that they can unsubscribe."}>
+              <Textarea rows={isSms ? 5 : 3} maxLength={600} value={cfg.form.consentText} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, consentText: e.target.value } }))} />
             </Field>
             <Field label="Privacy policy link" hint="Path or https URL"><Input value={cfg.form.privacyUrl} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, privacyUrl: e.target.value } }))} /></Field>
-            <Field label="Message after signing up" hint="Shoppers always confirm from their inbox first (double opt-in)."><Input maxLength={160} value={cfg.form.pendingMessage} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, pendingMessage: e.target.value } }))} /></Field>
-            <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-xs leading-relaxed">Confirmed subscribers appear under Subscribers. You can export them as a CSV or have them copied automatically to Klaviyo or Mailchimp (connect one under Subscribers). This app does not send marketing email itself. Have your consent wording reviewed for the regions you sell to.</p>
+            {isSms
+              ? <Field label="Message once the number is confirmed" hint="Shoppers always confirm their number with a code we text them before they are subscribed."><Input maxLength={160} value={cfg.form.successMessage} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, successMessage: e.target.value } }))} /></Field>
+              : <Field label="Message after signing up" hint="Shoppers always confirm from their inbox first (double opt-in)."><Input maxLength={160} value={cfg.form.pendingMessage} onChange={(e) => patch((c) => ({ ...c, form: { ...c.form!, pendingMessage: e.target.value } }))} /></Field>}
+            <p className="rounded-xl border border-brand-tint bg-brand-soft px-4 py-3 text-xs leading-relaxed">{isSms
+              ? "Verified numbers appear under Subscribers. You can export them as a CSV or have them copied with their SMS consent to Klaviyo (connect it under Subscribers) and text them from there. This app does not send marketing texts itself, and opt-outs by reply (STOP) are handled by the service that sends your texts: record any you receive elsewhere on the Subscribers page. Each confirmation code counts toward your plan's monthly SMS verifications. Have your consent wording reviewed for the countries you sell to."
+              : "Confirmed subscribers appear under Subscribers. You can export them as a CSV or have them copied automatically to Klaviyo or Mailchimp (connect one under Subscribers). This app does not send marketing email itself. Have your consent wording reviewed for the regions you sell to."}</p>
           </Section>
         )}
 
@@ -636,6 +653,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
         {!isUpsell && <Section title={isEmail ? "Sign-up incentive (optional)" : "Discount code (optional)"}>
           {guard.data && guard.data.maxDiscountPercent === null && !cfg.promotion && <p className="text-xs text-ink-3">Promotions are off for this store. Set a maximum discount under Settings, Promotions guardrail, to enable them.</p>}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!cfg.promotion} onChange={(e) => patch((c) => { const { promotion: _x, ...rest } = c; return e.target.checked ? { ...rest, promotion: { code: "SAVE10", percentOff: 10 } } : rest; })} />{isEmail ? "Give subscribers a discount code once they confirm" : "Show a discount code in this campaign"}</label>
+          {isSms && cfg.promotion && <p className="text-xs text-ink-3">The code is never shown on the form. It appears in the form only after the shopper confirms their number with the texted code. Everyone who confirms gets the same code, and it is only given while your store limit allows this percentage.</p>}
           {isEmail && cfg.promotion && <p className="text-xs text-ink-3">The code is never shown on the form. It appears on the confirmation page, and in a welcome email, only after the shopper confirms from their inbox. Everyone who confirms gets the same code: it is not single-use or personal, so set that up in your store if you need it to be. It is only given while your store limit allows this percentage.</p>}
           {cfg.promotion && (<>
             <div className="grid grid-cols-2 gap-3">
@@ -660,7 +678,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
         {row && panel("history", <div className="px-5 py-5"><VersionHistory store={store} campaignId={row.id} bare empty={<p className="text-sm text-ink-3">Nothing has been published yet. Each publish creates a version you can roll back to.</p>} /></div>)}
         </div>
 
-        <main className={`${pane === "preview" ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col bg-[#0b0d14] lg:flex`} style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
+        <main className={`${pane === "preview" ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col bg-surface-2 lg:flex`} style={{ backgroundImage: "radial-gradient(rgba(10,12,20,0.09) 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
           <div className="flex items-center justify-between px-5 pt-4">
             <h2 className="font-display text-xs font-bold uppercase tracking-[0.14em]">Live preview</h2>
             <span className="text-xs text-ink-3">{device === "mobile" ? "Mobile, 390 px" : "Desktop"}</span>
@@ -686,7 +704,7 @@ export function CampaignEditor({ store, campaign, initial, tool }: { store: Stor
         {issueCount > 0 && <p className="text-sm text-danger">Fix the {issueCount} {issueCount === 1 ? "issue" : "issues"} shown under the preview before launching.</p>}
         {warnings.length > 0 && <p className="text-sm text-ink-2">{warnings.length} {warnings.length === 1 ? "warning" : "warnings"} shown under the preview. Warnings do not block launching.</p>}
         <ErrorNote error={error} />
-        <label className="flex items-start gap-2.5 rounded-2xl border border-line bg-white/[0.02] p-4 text-sm leading-relaxed">
+        <label className="flex items-start gap-2.5 rounded-2xl border border-line bg-ink/[0.02] p-4 text-sm leading-relaxed">
           <input type="checkbox" className="mt-0.5 size-4 accent-[#2350ff]" checked={approved} disabled={!check.success} onChange={(e) => setApproved(e.target.checked)} />
           <span>I&apos;ve reviewed this campaign and approve it to go live on <span className="num">{store.domain}</span>.</span>
         </label>

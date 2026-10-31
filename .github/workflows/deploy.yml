@@ -1,0 +1,91 @@
+name: deploy
+# Manual only. NEVER RUN: no Cloudflare account was available when this was written (docs/deployment.md).
+# Set up GitHub Environments "staging" and "production" first; give "production" required reviewers, so both a deploy and a
+# migration need a person's approval. Each environment holds:
+#   secrets: CLOUDFLARE_API_TOKEN (Workers, D1, KV, Queues edit), CLOUDFLARE_ACCOUNT_ID
+#   vars:    API_URL, SDK_URL (public origins baked into the web build)
+on:
+  workflow_dispatch:
+    inputs:
+      environment: { description: "staging or production", required: true, type: choice, options: [staging, production] }
+      apply_migrations:
+        description: "Apply pending D1 migrations before deploying. Read the pending list (job 'plan') first; take a Time Travel bookmark for production."
+        required: true
+        type: boolean
+        default: false
+
+concurrency: { group: deploy-${{ inputs.environment }}, cancel-in-progress: false }
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm verify
+
+  plan:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env: { CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}", CLOUDFLARE_ACCOUNT_ID: "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Pending migrations (read-only)
+        working-directory: apps/api
+        run: pnpm exec wrangler d1 migrations list DB --env ${{ inputs.environment }} --remote
+
+  migrate:
+    # Only when asked, and (for production) only after an approver releases the environment. Never a side effect of deploying.
+    if: ${{ inputs.apply_migrations }}
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env: { CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}", CLOUDFLARE_ACCOUNT_ID: "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Record a Time Travel restore point (printed for the rollback runbook)
+        working-directory: apps/api
+        run: pnpm exec wrangler d1 time-travel info DB --env ${{ inputs.environment }}
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm exec wrangler d1 migrations apply DB --env ${{ inputs.environment }} --remote
+
+  deploy:
+    needs: [plan, migrate]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env: { CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}", CLOUDFLARE_ACCOUNT_ID: "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: API Worker
+        working-directory: apps/api
+        run: pnpm exec wrangler deploy --env ${{ inputs.environment }}
+      - name: Storefront SDK (static assets; core and per-tool scripts deploy together)
+        run: pnpm --filter @convertflow/storefront-sdk build && cd apps/storefront-sdk && pnpm exec wrangler deploy --env ${{ inputs.environment }}
+      - name: Web app (public URLs are baked in at build time)
+        env: { NEXT_PUBLIC_API_URL: "${{ vars.API_URL }}", NEXT_PUBLIC_SDK_URL: "${{ vars.SDK_URL }}" }
+        run: pnpm --filter @convertflow/web cf:build && cd apps/web && pnpm exec wrangler deploy --env ${{ inputs.environment }}
+      - name: Smoke check (health, OpenAPI, config endpoint answers)
+        run: |
+          curl -fsS "${{ vars.API_URL }}/health"
+          curl -fsS "${{ vars.API_URL }}/api/v1/openapi.json" > /dev/null
+          curl -fsS -o /dev/null -w "%{http_code}\n" "${{ vars.SDK_URL }}/cf.js"

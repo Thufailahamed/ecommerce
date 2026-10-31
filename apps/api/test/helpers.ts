@@ -4,7 +4,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { schema } from "@convertflow/database";
 import type { CampaignAIProvider } from "@convertflow/ai";
+import type { PhoneVerifier } from "@convertflow/integrations";
 import { createApp } from "../src/app.js";
+import { SUBSCRIBERS } from "../src/services/subscribers.js";
 import type { Deps, EmailMessage, EmailProvider, KeyValue, Secrets } from "../src/deps.js";
 
 export const ORIGIN = "http://localhost:3000";
@@ -28,7 +30,7 @@ export class MailBox implements EmailProvider {
   }
 }
 
-export async function makeEnv(ai?: CampaignAIProvider, extra: { secrets?: Secrets; fetchFn?: typeof fetch; email?: EmailProvider } = {}) {
+export async function makeEnv(ai?: CampaignAIProvider, extra: { secrets?: Secrets; fetchFn?: typeof fetch; email?: EmailProvider; phoneVerifier?: PhoneVerifier } = {}) {
   const client = createClient({ url: ":memory:" });
   await client.execute("PRAGMA foreign_keys = ON");
   const dir = join(import.meta.dirname, "../../../packages/database/migrations");
@@ -42,8 +44,9 @@ export async function makeEnv(ai?: CampaignAIProvider, extra: { secrets?: Secret
   const kv: KeyValue = { get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); } };
   const clock = { t: Date.parse("2026-10-27T12:00:00Z") };
   const deps: Deps = {
-    db: drizzle(client, { schema }), kv, now: () => new Date(clock.t), ...(ai ? { ai } : {}),
+    db: drizzle(client, { schema }), kv, now: () => new Date(clock.t), subscribers: SUBSCRIBERS, ...(ai ? { ai } : {}),
     ...(extra.secrets ? { secrets: extra.secrets } : {}), ...(extra.fetchFn ? { fetchFn: extra.fetchFn } : {}), ...(extra.email ? { email: extra.email } : {}),
+    ...(extra.phoneVerifier ? { phoneVerifier: extra.phoneVerifier } : {}),
   };
   const app = createApp(deps, { allowedOrigin: ORIGIN, secureCookies: false });
   return { app, deps, kv: store, clock };
@@ -89,6 +92,15 @@ export async function setupStore(env: Env, email = "owner@example.com") {
   const u = await signup(env, email);
   const s = await u.c.post("/api/v1/stores", { organizationId: u.orgId, platform: "custom", name: "Test shop", domain: "shop.example.com", currency: "USD" });
   return { ...u, storeId: s.json.data.id as string, siteKey: s.json.data.siteKey as string };
+}
+
+/**
+ * Records a store's Shopify shop the way a completed app install does (shopify.test.ts covers the install itself). A typed-in
+ * domain never links a shop, so tests that send Shopify webhooks link it first.
+ */
+export async function linkShop(env: Env, storeId: string, shop: string) {
+  const { eq } = await import("drizzle-orm");
+  await env.deps.db.update(schema.stores).set({ externalId: shop }).where(eq(schema.stores.id, storeId));
 }
 
 /** Moves an organisation to a plan directly (what a verified Stripe webhook would do). */

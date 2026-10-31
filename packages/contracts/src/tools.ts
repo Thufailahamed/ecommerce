@@ -13,7 +13,7 @@ export type Tool = z.infer<typeof Tool>;
  * a campaign for any other tool, so a merchant can never put a form or widget in front of shoppers that cannot work.
  * Add a tool here only in the same change that finishes and tests it.
  */
-export const SHIPPED_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["toast", "feed", "upsell", "email"]);
+export const SHIPPED_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["toast", "feed", "upsell", "sms", "email"]);
 
 /**
  * Where a tool's UI sits. Arbitration allows at most one campaign per slot, and `interruptive` and
@@ -104,7 +104,10 @@ export const FormOptions = z.object({
   consentCheckbox: z.literal(true).default(true),
   privacyUrl: SafeUrl,
   termsUrl: SafeUrl.optional(),
-  /** Email only: require the shopper to confirm from their inbox before they are treated as subscribed. */
+  /**
+   * Require the shopper to confirm before they are treated as subscribed: from their inbox (email) or with a one-time
+   * code texted to the number (SMS). Always on: single opt-in is rejected for both tools.
+   */
   doubleOptIn: z.boolean().default(true),
   successMessage: z.string().trim().min(1).max(160).default("Thanks. You're signed up."),
   pendingMessage: z.string().trim().min(1).max(160).default("Check your inbox to confirm your subscription."),

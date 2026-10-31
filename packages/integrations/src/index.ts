@@ -44,24 +44,61 @@ export function normalizeShopifyProduct(raw: unknown): NormalizedProduct | null 
   });
 }
 
-/** WooCommerce REST v3 product. */
-export function normalizeWooProduct(raw: unknown): NormalizedProduct | null {
+/** WooCommerce stock status. "onbackorder" stays unknown: it is neither in stock nor a promise of when. */
+const wooAvailable = (stock: unknown): boolean | undefined => (stock === "instock" ? true : stock === "outofstock" ? false : undefined);
+
+/** A variable product's variations come from their own endpoint (`/products/<id>/variations`), not the product payload. */
+export const isWooVariable = (raw: unknown): boolean => obj(raw)["type"] === "variable";
+
+/** One WooCommerce REST v3 variation as a variant. Disabled ("private") variations cannot be bought and are left out. */
+export function normalizeWooVariation(raw: unknown): NormalizedProduct["variants"][number] | null {
+  const v = obj(raw);
+  if (v["id"] === undefined || (v["status"] !== undefined && v["status"] !== "publish")) return null;
+  const options = arr(v["attributes"]).map((a) => str(obj(a)["option"])).filter((x): x is string => !!x);
+  return strip({ externalId: String(v["id"]), title: options.length ? options.join(" / ").slice(0, 200) : undefined, price: num(v["price"]), available: wooAvailable(v["stock_status"]) });
+}
+
+/**
+ * WooCommerce REST v3 product. A simple product is its own single variant (same id, which is what the storefront's
+ * add-to-cart uses). A variable product's variants are its variations: pass them when fetched. Without them the product
+ * is returned with no variants, so the import leaves stock it already knows untouched instead of inventing a variant.
+ */
+export function normalizeWooProduct(raw: unknown, variations?: unknown[]): NormalizedProduct | null {
   const p = obj(raw);
   const title = str(p["name"]);
   if (p["id"] === undefined || !title) return null;
-  const stock = p["stock_status"];
-  const available = stock === "instock" ? true : stock === "outofstock" ? false : undefined;
   const permalink = str(p["permalink"]);
   let url: string | undefined;
   try { if (permalink) url = new URL(permalink).pathname; } catch { /* leave undefined */ }
   const img = str(obj(arr(p["images"])[0])["src"]);
+  const variants = isWooVariable(p)
+    ? (variations ?? []).map(normalizeWooVariation).filter((v): v is NonNullable<typeof v> => v !== null).slice(0, 100)
+    : [strip({ externalId: String(p["id"]), price: num(p["price"]), available: wooAvailable(p["stock_status"]) })];
   return strip({
-    externalId: String(p["id"]), title,
+    externalId: String(p["id"]), title: title.slice(0, 300),
     status: p["status"] === "publish" ? ("active" as const) : p["status"] === "trash" ? ("archived" as const) : ("draft" as const),
-    collectionIds: arr(p["categories"]).map((c) => String(obj(c)["id"])).filter((x) => x !== "undefined"),
+    collectionIds: arr(p["categories"]).map((c) => String(obj(c)["id"])).filter((x) => x !== "undefined").slice(0, 50),
     url, imageUrl: img,
-    variants: [strip({ externalId: String(p["id"]), price: num(p["price"]), available })],
+    variants,
   });
+}
+
+/**
+ * The facts of a WooCommerce REST v3 order that become an observed purchase: id, total, currency, time. Nothing about the
+ * customer is read. Null for orders that are not purchases (yet): drafts from the block checkout, failed or cancelled ones.
+ */
+export function wooOrderFacts(raw: unknown): { externalOrderId: string; total: number; currency: string; placedAt: string | null } | null {
+  const o = obj(raw);
+  const id = o["id"];
+  if ((typeof id !== "number" && typeof id !== "string") || String(id).length === 0) return null;
+  if (["checkout-draft", "failed", "cancelled", "trash", "auto-draft"].includes(String(o["status"] ?? ""))) return null;
+  const total = num(o["total"]);
+  const currency = String(o["currency"] ?? "").toUpperCase();
+  if (total === undefined || !/^[A-Z]{3}$/.test(currency)) return null;
+  // date_created_gmt has no zone suffix ("2026-10-27T10:00:00"): it is UTC.
+  const gmt = str(o["date_created_gmt"]);
+  const placed = gmt ? Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(gmt) ? gmt : `${gmt}Z`) : NaN;
+  return { externalOrderId: String(id).slice(0, 100), total, currency, placedAt: Number.isNaN(placed) ? null : new Date(placed).toISOString() };
 }
 
 /** BigCommerce catalog v3 product. */
@@ -129,3 +166,5 @@ export function productsFromCsv(text: string): CsvResult {
 }
 
 export * from "./providers";
+export * from "./sms";
+export * from "./capabilities";

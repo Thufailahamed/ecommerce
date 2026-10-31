@@ -460,19 +460,91 @@ export const subscriptions = sqliteTable("subscriptions", {
   status: text("status", { enum: ["active", "trialing", "past_due", "cancelled"] }).notNull().default("active"),
   /** Provider's id (Shopify subscription GID or other billing provider). Source of truth lives there. */
   providerRef: text("provider_ref"),
-  /** Stripe customer id, needed for the self-service billing portal. */
+  /** Stripe customer id (billing portal), or the myshopify domain the Shopify charge belongs to. */
   customerRef: text("customer_ref"),
   currentPeriodEnd: text("current_period_end"),
+  /** Who bills this workspace: "stripe" or "shopify". Null for a workspace that never paid. Webhooks from one provider never change the other's subscription. */
+  provider: text("provider", { enum: ["stripe", "shopify"] }),
   updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("subscriptions_org_uq").on(t.organizationId)]);
 
+/**
+ * One row per Shopify shop that has authorised the app. The offline token lives here only while the install is waiting to
+ * be claimed by a workspace (an install that started in Shopify, not in our dashboard); once linked it moves to the
+ * store's `integration_credentials` and is cleared here. Uninstalling keeps the row (with status) for reinstalls and audits.
+ */
+export const shopifyInstallations = sqliteTable("shopify_installations", {
+  id: id(),
+  /** The permanent myshopify.com domain, lower-cased. */
+  shop: text("shop").notNull(),
+  storeId: text("store_id").references(() => stores.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["pending", "installed", "uninstalled"] }).notNull(),
+  /** Granted scopes, comma-separated, exactly as Shopify returned them. */
+  scopes: text("scopes").notNull(),
+  /** AES-GCM; only set while status is "pending". */
+  encryptedPendingToken: text("encrypted_pending_token"),
+  /** SHA-256 of the one-time token that lets a signed-in merchant attach a pending install to a workspace. */
+  claimTokenHash: text("claim_token_hash"),
+  claimExpiresAt: text("claim_expires_at"),
+  installedAt: text("installed_at").notNull(),
+  uninstalledAt: text("uninstalled_at"),
+  /** The app's web pixel at Shopify (gid), once `webPixelCreate` succeeded. Purchases are reported only while it exists. */
+  webPixelId: text("web_pixel_id"),
+  /** When the site key and origins were written to the app-data metafields the theme app embed reads. */
+  appMetafieldsSetAt: text("app_metafields_set_at"),
+  /** Why the last storefront setup (pixel, metafields) did not finish; null when it did. No Shopify text, only our codes. */
+  setupError: text("setup_error"),
+  updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex("shopify_installations_shop_uq").on(t.shop),
+  uniqueIndex("shopify_installations_claim_uq").on(t.claimTokenHash),
+  index("shopify_installations_store_idx").on(t.storeId),
+]);
+
+/**
+ * A WooCommerce store's live connection (REST API keys live encrypted in `integration_credentials`). One per store.
+ * Webhooks are created at the store by the API with a per-store secret, which signs every delivery.
+ */
+export const woocommerceConnections = sqliteTable("woocommerce_connections", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  /** "authorize": WooCommerce's /wc-auth/v1/authorize approval; "manual": keys pasted by the merchant. */
+  method: text("method", { enum: ["authorize", "manual"] }).notNull(),
+  /** What the key may do, as WooCommerce reported it ("read", "write", "read_write"), or null when unknown (manual keys). */
+  keyPermissions: text("key_permissions"),
+  /** AES-GCM; the secret WooCommerce signs webhook deliveries with (X-WC-Webhook-Signature). */
+  encryptedWebhookSecret: text("encrypted_webhook_secret").notNull(),
+  /** Ids of the webhooks this app created at the store, so they can be checked, repaired and deleted. */
+  webhookIds: text("webhook_ids", { mode: "json" }).$type<number[]>().notNull().default([]),
+  webhookState: text("webhook_state", { enum: ["pending", "active", "failed", "read_only"] }).notNull().default("pending"),
+  /** One of our own error codes; never text from the store. */
+  webhookError: text("webhook_error"),
+  /** Verified against the store's REST API: the keys work and the site is WooCommerce. Null until then. */
+  verifiedAt: text("verified_at"),
+  lastWebhookAt: text("last_webhook_at"),
+  connectedAt: text("connected_at").notNull(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("woocommerce_connections_store_uq").on(t.storeId)]);
+
 export const usageRecords = sqliteTable("usage_records", {
   organizationId: text("organization_id").notNull(),
-  metric: text("metric", { enum: ["pageviews", "ai_generations", "notifications"] }).notNull(),
+  /** USAGE_METRICS in @convertflow/contracts. */
+  metric: text("metric", { enum: ["pageviews", "ai_generations", "notifications", "workflow_executions", "builder_messages", "ai_images", "sms_verifications"] }).notNull(),
   /** YYYY-MM */
   period: text("period").notNull(),
   count: integer("count").notNull().default(0),
 }, (t) => [uniqueIndex("usage_uq").on(t.organizationId, t.metric, t.period)]);
+
+/**
+ * Preview capabilities switched on for one workspace (`CAPABILITIES` with availability "preview"). Presence is the flag.
+ * Set by staff, never by a merchant request; a planned capability is never granted whatever is stored here.
+ */
+export const organizationFeatures = sqliteTable("organization_features", {
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  feature: text("feature").notNull(),
+  enabledBy: text("enabled_by"),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.organizationId, t.feature] })]);
 
 export const aiGenerations = sqliteTable("ai_generations", {
   id: id(),
@@ -480,7 +552,14 @@ export const aiGenerations = sqliteTable("ai_generations", {
   requestedBy: text("requested_by"),
   prompt: text("prompt").notNull(),
   status: text("status", { enum: ["succeeded", "rejected", "failed"] }).notNull(),
+  /** AI_TASKS key in @convertflow/ai. Rows from before the task registry are campaign generations. */
+  task: text("task").notNull().default("campaign.generate"),
+  organizationId: text("organization_id"),
+  provider: text("provider"),
   model: text("model"),
+  durationMs: integer("duration_ms"),
+  /** Null when no rate is configured for the model: a cost is never guessed. */
+  estimatedCostUsd: real("estimated_cost_usd"),
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
   error: text("error"),
@@ -492,8 +571,242 @@ export const auditLogs = sqliteTable("audit_logs", {
   storeId: text("store_id"),
   organizationId: text("organization_id"),
   actorId: text("actor_id"),
+  /** `user` (a signed-in member), `platform` (a verified webhook) or `system` (scheduled or internal work). */
+  actorType: text("actor_type", { enum: ["user", "platform", "system"] }).notNull().default("user"),
   action: text("action").notNull(),
   targetType: text("target_type"),
   targetId: text("target_id"),
+  /** The request that caused it, so an audit row can be matched to logs and platform events. */
+  correlationId: text("correlation_id"),
+  /** Small, non-personal facts about the change (a new role, a discount ceiling). Never addresses, names or secrets. */
+  summary: text("summary", { mode: "json" }).$type<Record<string, string | number | boolean | null>>(),
   createdAt: createdAt(),
-}, (t) => [index("audit_store_idx").on(t.storeId, t.createdAt)]);
+}, (t) => [index("audit_store_idx").on(t.storeId, t.createdAt), index("audit_org_idx").on(t.organizationId, t.createdAt)]);
+
+/* ---------- platform events ---------- */
+
+/**
+ * Internal platform events (contract: `@convertflow/contracts` DOMAIN_EVENTS), stored before they are delivered so a
+ * lost queue message, a failed subscriber or a replay never loses or doubles one. Short retention; see
+ * docs/event-catalog.md. Storefront analytics beacons never come here.
+ */
+export const domainEvents = sqliteTable("domain_events", {
+  id: id(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  /** Null for workspace-level events. Not a foreign key: store purge deletes these explicitly. */
+  storeId: text("store_id"),
+  type: text("type").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  source: text("source", { enum: ["api", "shopify_webhook", "woocommerce_webhook", "storefront", "scheduler", "system"] }).notNull(),
+  correlationId: text("correlation_id"),
+  /** Unique per workspace: the same outcome published twice is recorded once. */
+  idempotencyKey: text("idempotency_key").notNull(),
+  privacy: text("privacy", { enum: ["none", "pseudonymous"] }).notNull(),
+  payload: text("payload", { mode: "json" }).$type<unknown>().notNull(),
+  occurredAt: text("occurred_at").notNull(),
+  recordedAt: text("recorded_at").notNull(),
+  /** `delivered` once every subscriber has succeeded; `failed` while at least one has not. */
+  status: text("status", { enum: ["pending", "delivered", "failed"] }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  deliveredAt: text("delivered_at"),
+}, (t) => [
+  uniqueIndex("domain_events_idem_uq").on(t.organizationId, t.idempotencyKey),
+  index("domain_events_store_idx").on(t.storeId, t.recordedAt),
+  index("domain_events_status_idx").on(t.status, t.recordedAt),
+]);
+
+/** One row per (event, subscriber) that has run, so a redelivered event only runs the subscribers that have not succeeded. */
+export const domainEventDeliveries = sqliteTable("domain_event_deliveries", {
+  eventId: text("event_id").notNull().references(() => domainEvents.id, { onDelete: "cascade" }),
+  subscriber: text("subscriber").notNull(),
+  status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  updatedAt: updatedAt(),
+}, (t) => [primaryKey({ columns: [t.eventId, t.subscriber] })]);
+
+/* ---------- automation: actions, approvals, workflows ---------- */
+
+/**
+ * The approval queue shared by workflows and the AI Commerce Manager. A request names one registered action
+ * (`ACTIONS` in @convertflow/contracts) with validated input; it runs only after a member with the action's permission
+ * approves it, and then on that member's authority. Inputs are bounded by the action schemas; rationale is plain text.
+ */
+export const actionRequests = sqliteTable("action_requests", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull(),
+  action: text("action").notNull(),
+  input: text("input", { mode: "json" }).$type<unknown>().notNull(),
+  origin: text("origin", { enum: ["workflow", "ai"] }).notNull(),
+  status: text("status", { enum: ["pending", "rejected", "executed", "failed", "expired"] }).notNull().default("pending"),
+  /** Why it is proposed (AI explanation, or the workflow's own summary). Plain text, never rendered as HTML. */
+  rationale: text("rationale"),
+  /** The figures the proposal relied on (metric ids, values, periods) so the merchant can check them. */
+  evidence: text("evidence", { mode: "json" }).$type<unknown>(),
+  requestedBy: text("requested_by"),
+  workflowRunId: text("workflow_run_id"),
+  /** Groups the proposals made for one merchant objective (AI Commerce Manager). */
+  planId: text("plan_id"),
+  decidedBy: text("decided_by"),
+  decidedAt: text("decided_at"),
+  result: text("result", { mode: "json" }).$type<unknown>(),
+  error: text("error"),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: createdAt(),
+}, (t) => [index("action_requests_store_status_idx").on(t.storeId, t.status, t.createdAt), index("action_requests_plan_idx").on(t.planId)]);
+
+export const workflows = sqliteTable("workflows", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  status: text("status", { enum: ["draft", "active", "paused", "archived"] }).notNull().default("draft"),
+  /** Working copy. Never executed. */
+  draftDefinition: text("draft_definition", { mode: "json" }).$type<unknown>().notNull(),
+  activeVersionId: text("active_version_id"),
+  /** Runs act on this member's authority, re-checked on every run. */
+  activatedBy: text("activated_by"),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index("workflows_store_status_idx").on(t.storeId, t.status)]);
+
+/** Immutable. A definition is executed only from a version. */
+export const workflowVersions = sqliteTable("workflow_versions", {
+  id: id(),
+  workflowId: text("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+  storeId: text("store_id").notNull(),
+  version: integer("version").notNull(),
+  definition: text("definition", { mode: "json" }).$type<unknown>().notNull(),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("workflow_versions_uq").on(t.workflowId, t.version)]);
+
+/** One per (version, trigger). The unique key is what makes a redelivered trigger a no-op. */
+export const workflowRuns = sqliteTable("workflow_runs", {
+  id: id(),
+  storeId: text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  workflowId: text("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+  versionId: text("version_id").notNull(),
+  /** The triggering platform event id, or "day:YYYY-MM-DD" for a scheduled run. */
+  triggerKey: text("trigger_key").notNull(),
+  status: text("status", { enum: ["scheduled", "running", "succeeded", "skipped", "failed", "cancelled"] }).notNull().default("scheduled"),
+  runAt: text("run_at").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  /** What each condition and action did, in order. Ids and outcomes only. */
+  steps: text("steps", { mode: "json" }).$type<unknown[]>().notNull().default([]),
+  error: text("error"),
+  createdAt: createdAt(),
+  finishedAt: text("finished_at"),
+}, (t) => [
+  uniqueIndex("workflow_runs_trigger_uq").on(t.versionId, t.triggerKey),
+  index("workflow_runs_due_idx").on(t.status, t.runAt),
+  index("workflow_runs_workflow_idx").on(t.workflowId, t.createdAt),
+]);
+
+/* ---------- AI store builder ---------- */
+
+/**
+ * A store built with the AI builder. The draft document is the working copy the editor and the AI change; shoppers only
+ * ever see a published version. The document format is `SiteDocument` in @convertflow/store-builder.
+ */
+export const sites = sqliteTable("sites", {
+  id: id(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** Public address: /s/<slug>. Unique across the platform. */
+  slug: text("slug").notNull(),
+  status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
+  draft: text("draft", { mode: "json" }).$type<unknown>().notNull(),
+  /** Increments on every draft write; writers send the revision they edited (optimistic concurrency). */
+  revision: integer("revision").notNull().default(1),
+  publishedVersionId: text("published_version_id"),
+  publishedAt: text("published_at"),
+  /** The first prompt, kept for the store card and for "build again". */
+  prompt: text("prompt"),
+  /** The brand brief from the first build (summary, voice, image art direction), reused so later edits stay on-brand. */
+  brief: text("brief", { mode: "json" }).$type<Record<string, unknown>>(),
+  /** A chat turn holds this until it finishes, so two turns never write the same draft at once. */
+  busyUntil: text("busy_until"),
+  /** The merchant's own Stripe secret key, AES-GCM encrypted. Null: orders are taken without online payment. */
+  stripeSecretEnc: text("stripe_secret_enc"),
+  /** Where order and contact-form notifications go. */
+  notifyEmail: text("notify_email"),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("sites_slug_uq").on(t.slug), index("sites_org_idx").on(t.organizationId, t.status)]);
+
+/** Immutable snapshots: every AI turn, checkpoint, restore and publish. Restoring copies a snapshot into the draft. */
+export const siteVersions = sqliteTable("site_versions", {
+  id: id(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  kind: text("kind", { enum: ["ai", "manual", "restore", "publish", "initial"] }).notNull(),
+  label: text("label").notNull(),
+  document: text("document", { mode: "json" }).$type<unknown>().notNull(),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("site_versions_uq").on(t.siteId, t.number)]);
+
+/** The builder conversation. Content is plain text; `meta` holds the changes, steps and suggestions shown with it. */
+export const siteMessages = sqliteTable("site_messages", {
+  id: id(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  meta: text("meta", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  versionId: text("version_id"),
+  createdBy: text("created_by"),
+  createdAt: createdAt(),
+}, (t) => [index("site_messages_site_idx").on(t.siteId, t.createdAt)]);
+
+/** Uploaded or generated images. Bytes live in KV under `asset:<id>`; this row is the index and the owner check. */
+export const siteAssets = sqliteTable("site_assets", {
+  id: id(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  source: text("source", { enum: ["upload", "ai"] }).notNull(),
+  contentType: text("content_type").notNull(),
+  bytes: integer("bytes").notNull(),
+  alt: text("alt"),
+  prompt: text("prompt"),
+  createdAt: createdAt(),
+}, (t) => [index("site_assets_site_idx").on(t.siteId, t.createdAt)]);
+
+/**
+ * An order placed on a published store. Lines and totals are priced on the server from the published document, never
+ * from the browser. Customer details are personal data: erased with the site, and never shown to the AI.
+ */
+export const siteOrders = sqliteTable("site_orders", {
+  id: id(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  status: text("status", { enum: ["pending_payment", "paid", "unpaid", "fulfilled", "cancelled"] }).notNull(),
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  address: text("address", { mode: "json" }).$type<Record<string, string>>().notNull(),
+  lines: text("lines", { mode: "json" }).$type<unknown[]>().notNull(),
+  currency: text("currency").notNull(),
+  subtotal: real("subtotal").notNull(),
+  shipping: real("shipping").notNull(),
+  total: real("total").notNull(),
+  note: text("note"),
+  /** Stripe Checkout session id when paid online. */
+  paymentRef: text("payment_ref"),
+  /** SHA-256 of the token in the shopper's confirmation link: only that link can read the order back. */
+  accessHash: text("access_hash").notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("site_orders_number_uq").on(t.siteId, t.number), index("site_orders_site_idx").on(t.siteId, t.createdAt)]);
+
+/** Newsletter sign-ups and contact messages from a published store. */
+export const siteSubmissions = sqliteTable("site_submissions", {
+  id: id(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["newsletter", "contact"] }).notNull(),
+  email: text("email").notNull(),
+  name: text("name"),
+  message: text("message"),
+  createdAt: createdAt(),
+}, (t) => [index("site_submissions_site_idx").on(t.siteId, t.kind, t.createdAt), index("site_submissions_email_idx").on(t.siteId, t.kind, t.email)]);

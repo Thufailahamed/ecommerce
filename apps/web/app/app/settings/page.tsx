@@ -12,6 +12,8 @@ import { TeamSection } from "@/components/settings/team";
 import { SecuritySection } from "@/components/settings/security";
 import { BillingSection } from "@/components/settings/billing";
 import { CatalogConnect } from "@/components/settings/catalog";
+import { ShopifySection } from "@/components/settings/shopify";
+import { WooCommerceSection } from "@/components/settings/woocommerce";
 import { DiscountGuardrail } from "@/components/settings/guardrail";
 import { WorkspacesSection } from "@/components/settings/workspaces";
 import { Code, Package, Power, Receipt, Trash2, Unplug } from "lucide-react";
@@ -54,6 +56,8 @@ function Settings({ store }: { store: Store }) {
         <p className="text-xs text-ink-3">For exact page data (product id, cart subtotal), define <code className="num">window.ConvertFlowContext</code>. Anything not provided is treated as unknown, never guessed. Back-in-stock forms need the product id.</p>
       </Section>
 
+      <ShopifySection store={store} canManage={isAdmin} />
+      <WooCommerceSection store={store} canManage={isAdmin} onChanged={integ.reload} />
       <CatalogConnect store={store} connection={integ.data?.connection} onChanged={integ.reload} />
 
       <Section icon={Package} title="Product catalog" sub="Import products from any platform as JSON or CSV (up to 100 per import). Omit “available” if you do not know stock: it is stored as unknown and AI will not claim stock. Importing a product that returns to stock sends back-in-stock alerts to confirmed subscribers.">
@@ -89,7 +93,7 @@ function Settings({ store }: { store: Store }) {
       <WorkspacesSection />
       <BillingSection store={store} isOwner={myRole === "owner"} />
 
-      <Section icon={Receipt} title="Track purchases (non-Shopify stores)" sub="On your order-confirmation page, call this once. It is sent only when the visitor has consented to analytics. Shopify stores use the checkout pixel instead.">
+      <Section icon={Receipt} title="Track purchases (custom stores)" sub="On your order-confirmation page, call this once. It is sent only when the visitor has consented to analytics. Shopify stores use the app pixel and WooCommerce stores the plugin instead; both also count orders from webhooks.">
         <pre tabIndex={0} className="num overflow-x-auto rounded-xl border border-line bg-canvas/70 p-4 text-xs leading-relaxed text-ink-2">{`window.ConvertFlow && window.ConvertFlow.trackPurchase &&
   window.ConvertFlow.trackPurchase({ orderId: "1001", total: 59.9, currency: "USD" });`}</pre>
       </Section>

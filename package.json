@@ -6,13 +6,15 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "lint": "turbo run lint",
+    "lint": "node scripts/check-repo.mjs",
     "verify": "turbo run typecheck test build --concurrency=3",
     "e2e": "pnpm --filter @convertflow/e2e e2e",
     "dev:local": "node scripts/dev-local.mjs up",
     "dev:db": "node scripts/dev-local.mjs db",
     "dev:plan": "node scripts/dev-local.mjs plan",
-    "dev:reset": "node scripts/dev-local.mjs reset"
+    "dev:feature": "node scripts/dev-local.mjs feature",
+    "dev:reset": "node scripts/dev-local.mjs reset",
+    "db:check": "pnpm --filter @convertflow/api exec wrangler d1 migrations apply convertflow --local --persist-to ../../.migration-check"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261023.1",

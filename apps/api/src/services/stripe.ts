@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { schema } from "@convertflow/database";
 import { HttpError, type Deps } from "../deps.js";
 import type { PlanId } from "../plans.js";
+import { republishOrganization } from "./campaigns.js";
 
 const enc = new TextEncoder();
 const PAID: PlanId[] = ["starter", "growth", "scale"];
@@ -28,6 +29,8 @@ export async function createCheckout(d: Deps, organizationId: string, plan: Plan
   const price = plan !== "free" ? s?.stripePrices?.[plan as "starter" | "growth" | "scale"] : undefined;
   if (!s?.stripeSecretKey || !price || !s.webOrigin) throw new HttpError(503, "billing_unavailable", "Billing is not configured yet");
   if (!PAID.includes(plan)) throw new HttpError(400, "invalid_plan", "Choose a paid plan");
+  const [current] = await d.db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organizationId, organizationId)).limit(1);
+  if (current?.provider === "shopify" && (current.status === "active" || current.status === "trialing")) throw new HttpError(409, "billed_by_shopify", "This workspace is billed through Shopify. Change the plan from the Shopify billing option.");
   const res = await (d.fetchFn ?? fetch)("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: { authorization: `Bearer ${s.stripeSecretKey}`, "content-type": "application/x-www-form-urlencoded" },
@@ -79,7 +82,8 @@ export async function handleStripeEvent(d: Deps, ev: StripeEvent): Promise<"proc
     const orgId = typeof o["client_reference_id"] === "string" ? o["client_reference_id"] : undefined;
     const plan = meta["plan"] as PlanId | undefined;
     if (!orgId || !plan || !PAID.includes(plan)) return "ignored";
-    await set(orgId, { plan, status: "active", providerRef: typeof o["subscription"] === "string" ? o["subscription"] : null, ...(typeof o["customer"] === "string" ? { customerRef: o["customer"] } : {}) });
+    await set(orgId, { plan, status: "active", provider: "stripe", providerRef: typeof o["subscription"] === "string" ? o["subscription"] : null, ...(typeof o["customer"] === "string" ? { customerRef: o["customer"] } : {}) });
+    await republishOrganization(d, orgId);
     return "processed";
   }
   if (ev.type === "customer.subscription.updated" || ev.type === "customer.subscription.deleted") {
@@ -90,7 +94,9 @@ export async function handleStripeEvent(d: Deps, ev: StripeEvent): Promise<"proc
     const status = ev.type === "customer.subscription.deleted" ? "cancelled" : STATUS[String(o["status"])] ?? "past_due";
     const plan = meta["plan"] as PlanId | undefined;
     const end = typeof o["current_period_end"] === "number" ? new Date(o["current_period_end"] * 1000).toISOString() : null;
+    if (row.provider === "shopify") return "ignored"; // a Stripe event never changes a subscription Shopify bills
     await set(row.organizationId, { status, ...(plan && PAID.includes(plan) ? { plan } : {}), currentPeriodEnd: end, ...(typeof o["customer"] === "string" ? { customerRef: o["customer"] } : {}) });
+    await republishOrganization(d, row.organizationId);
     return "processed";
   }
   return "ignored";

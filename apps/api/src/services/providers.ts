@@ -5,13 +5,15 @@ import { decrypt, encrypt } from "../lib/aes.js";
 import { newId } from "../lib/crypto.js";
 import { HttpError, type Deps } from "../deps.js";
 import { isSuppressed } from "./suppression.js";
+import { recordAudit } from "./audit.js";
 
-const { providerConnections: pc, providerSyncJobs: pj, contacts, consentEvents, auditLogs } = schema;
+const { providerConnections: pc, providerSyncJobs: pj, contacts, consentEvents } = schema;
 
 export type SyncStatus = (typeof schema.SYNC_STATUSES)[number];
 export const PROVIDERS: readonly ProviderKey[] = schema.PROVIDERS;
 /** What each provider can take today. The adapters themselves say the same; this is readable without building one (which needs a key). */
-const PROVIDER_CHANNELS: Record<ProviderKey, readonly ProviderChannel[]> = { klaviyo: ["email"], mailchimp: ["email"] };
+const PROVIDER_CHANNELS: Record<ProviderKey, readonly ProviderChannel[]> = { klaviyo: ["email", "sms"], mailchimp: ["email"] };
+export const providerChannels = (p: ProviderKey): readonly ProviderChannel[] => PROVIDER_CHANNELS[p];
 export const providerLabel = (p: ProviderKey): string => (p === "klaviyo" ? "Klaviyo" : "Mailchimp");
 
 /** A transient failure is retried this many times, with growing waits, before the job is marked failed for the merchant to see. */
@@ -145,9 +147,12 @@ export async function chooseList(d: Deps, storeId: string, provider: ProviderKey
 
 const BACKFILL_MAX = 5_000;
 async function backfill(d: Deps, storeId: string, provider: ProviderKey): Promise<number> {
-  const rows = await d.db.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.storeId, storeId), eq(contacts.emailStatus, "subscribed"))).orderBy(contacts.createdAt, sql`rowid`).limit(BACKFILL_MAX);
   let n = 0;
-  for (const r of rows) { await upsertJob(d, storeId, r.id, provider, "email", "subscribe"); n++; }
+  for (const channel of PROVIDER_CHANNELS[provider]) {
+    const status = channel === "email" ? contacts.emailStatus : contacts.smsStatus;
+    const rows = await d.db.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.storeId, storeId), eq(status, "subscribed"))).orderBy(contacts.createdAt, sql`rowid`).limit(BACKFILL_MAX - n);
+    for (const r of rows) { await upsertJob(d, storeId, r.id, provider, channel, "subscribe"); n++; }
+  }
   await sweepSyncJobs(d, { storeId, limit: 200 }); // the rest drain on the daily sweep
   return n;
 }
@@ -337,7 +342,7 @@ export async function removeFromProviders(d: Deps, storeId: string, contactId: s
     } catch (e) {
       log("provider_erasure", e);
       failed.push(j.provider);
-      await d.db.insert(auditLogs).values({ id: newId("aud"), storeId, action: "contact.provider_cleanup_failed", targetType: "provider", targetId: j.provider, createdAt: d.now().toISOString() });
+      await recordAudit(d, { action: "contact.provider_cleanup_failed", actorId: null, actorType: "system", storeId, targetType: "provider", targetId: j.provider });
     }
   }
   return failed;

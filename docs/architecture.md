@@ -1,4 +1,30 @@
-# ConvertFlow AI — Architecture (Phase 0)
+# ConvertFlow AI — Architecture
+
+## Platform foundation (current, 2026-10-29)
+
+The platform is a modular monolith on Cloudflare Workers, built in these layers:
+
+```
+Merchant dashboard (Next.js)  ──►  API Worker (Hono, /api/v1)
+                                    ├─ authz: permission catalog, tenant gate        (docs/permissions.md)
+                                    ├─ domain services: campaigns, catalog, contacts, analytics, AI, billing
+                                    ├─ audit: workspace + store log, correlation ids
+                                    └─ platform events: store → queue → subscribers  (docs/event-catalog.md)
+Commerce adapters: Shopify webhooks (verified), Woo/BigCommerce catalog sync, Klaviyo/Mailchimp lists
+Storefront SDK ──► beacons ──► queue ──► aggregates (raw events never in D1)
+```
+
+- Modules talk through domain services and platform events. A module never reads another module's tables or imports
+  its webhook handler.
+- What exists, what is missing, and the risks are in `docs/platform-audit.md`. The build order is in
+  `docs/implementation-roadmap.md`.
+- The sections below are the original Phase 0 draft, kept for its verified vendor facts and decisions. Where it
+  disagrees with the code (for example, billing is Stripe, and webhooks are handled synchronously), the code and the
+  newer docs win.
+
+---
+
+# Original Phase 0 draft
 
 Status: draft for approval. Verified against vendor docs on 2026-10-27 (see "Verified facts").
 

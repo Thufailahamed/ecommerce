@@ -61,7 +61,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]" role="presentation">
-      <button aria-label="Close search" tabIndex={-1} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
+      <button aria-label="Close search" tabIndex={-1} className="absolute inset-0 bg-[#0a0c14]/45 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
       <div role="dialog" aria-modal="true" aria-label="Search pages and actions" className="palette-in relative w-full max-w-xl overflow-hidden rounded-[1.5rem] border border-line-strong bg-surface shadow-[0_40px_120px_-30px_rgba(35,80,255,0.6)]">
         <div className="flex items-center gap-3 border-b border-line px-5">
           <Search className="size-4 text-brand" aria-hidden />
@@ -78,7 +78,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             placeholder="Search pages, tools and actions"
             className="h-14 flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-3 focus-visible:outline-none"
           />
-          <kbd className="rounded-md border border-line bg-white/[0.04] px-1.5 py-0.5 text-[11px] text-ink-3">Esc</kbd>
+          <kbd className="rounded-md border border-line bg-ink/[0.04] px-1.5 py-0.5 text-[11px] text-ink-3">Esc</kbd>
         </div>
         <ul id={listId} role="listbox" aria-label="Results" className="max-h-[52vh] overflow-y-auto p-2">
           {groups.map(({ g, items }) => (
@@ -94,7 +94,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                     <li key={c.id} id={`${listId}-${c.id}`} role="option" aria-selected={on}
                       onMouseEnter={() => setActive(i)} onClick={() => go(c)}
                       className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${on ? "bg-brand-soft text-ink" : "text-ink-2"}`}>
-                      <span className={`grid size-8 place-items-center rounded-lg transition-colors ${on ? "bg-brand-solid text-white" : "bg-white/[0.05] text-ink-3"}`}><Icon className="size-4" aria-hidden /></span>
+                      <span className={`grid size-8 place-items-center rounded-lg transition-colors ${on ? "bg-brand-solid text-white" : "bg-ink/[0.05] text-ink-3"}`}><Icon className="size-4" aria-hidden /></span>
                       <span className="flex-1 font-medium">{c.label}</span>
                       {c.hint && <span className="text-xs text-ink-3">{c.hint}</span>}
                       {on && <kbd className="rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-3">Enter</kbd>}

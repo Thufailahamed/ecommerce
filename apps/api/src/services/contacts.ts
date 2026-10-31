@@ -1,11 +1,13 @@
-import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { CampaignConfig, SHIPPED_TOOLS } from "@convertflow/contracts";
 import { schema } from "@convertflow/database";
 import { b64url, newId, randomToken, sha256Hex } from "../lib/crypto.js";
 import type { Deps } from "../deps.js";
 import { emailEnabled, templates } from "./email.js";
 import { onConfirmed, onRevoked, removeFromProviders, syncStatusFor } from "./providers.js";
-import { getPlan } from "./stores.js";
+import { entitlementsFor, quota, recordUsage } from "./entitlements.js";
+import { ProviderError } from "@convertflow/integrations";
+import { forgetContactEvents, publishDomainEvent } from "./domain-events.js";
 import { identifierHash, isSuppressed } from "./suppression.js";
 
 const { contacts, consentEvents, suppressionRecords, stores, campaigns, campaignVersions } = schema;
@@ -132,6 +134,14 @@ export async function confirmOptIn(d: Deps, token: string): Promise<Confirmed | 
   if (!token) return null;
   const [req] = await d.db.select().from(consentEvents).where(and(eq(consentEvents.tokenHash, await sha256Hex(token)), eq(consentEvents.event, "requested"))).limit(1);
   if (!req || Date.parse(req.createdAt) + CONFIRM_TTL_MS < d.now().getTime()) return null;
+  return confirmRequest(d, req);
+}
+
+/**
+ * Turns one recorded request into a subscription, whatever proved it (an emailed link, a texted code). The contact must
+ * still be pending and not suppressed, and the claim is atomic, so two confirmations of the same request count once.
+ */
+async function confirmRequest(d: Deps, req: typeof consentEvents.$inferSelect): Promise<Confirmed | null> {
   const [c] = await d.db.select().from(contacts).where(eq(contacts.id, req.contactId)).limit(1);
   const value = c && (req.channel === "email" ? c.email : c.phone);
   if (!c || !value || await isSuppressed(d, c.storeId, req.channel, value)) return null;
@@ -140,8 +150,10 @@ export async function confirmOptIn(d: Deps, token: string): Promise<Confirmed | 
   const now = d.now().toISOString();
   const claimed = await d.db.update(contacts).set({ [key]: "subscribed", updatedAt: now }).where(and(eq(contacts.id, c.id), eq(contacts[key], "pending"))).returning({ id: contacts.id });
   if (!claimed[0]) return null;
-  await d.db.insert(consentEvents).values({ id: newId("cev"), storeId: c.storeId, contactId: c.id, channel: req.channel, event: "confirmed", source: req.source, versionId: req.versionId, createdAt: now });
+  const confirmedId = newId("cev");
+  await d.db.insert(consentEvents).values({ id: confirmedId, storeId: c.storeId, contactId: c.id, channel: req.channel, event: "confirmed", source: req.source, versionId: req.versionId, createdAt: now });
   await onConfirmed(d, c.storeId, c.id, req.channel); // queue the copy to the merchant's list provider(s); never blocks or fails the confirmation
+  await publishDomainEvent(d, { type: "customer.subscribed", payload: { contactId: c.id, channel: req.channel }, idempotencyKey: `consent:${confirmedId}`, storeId: c.storeId, source: "storefront" });
   return { contactId: c.id, storeId: c.storeId, channel: req.channel, incentive: await incentiveFor(d, c.storeId, req.versionId) };
 }
 
@@ -170,8 +182,10 @@ export async function revokeConsent(d: Deps, storeId: string, channel: Channel, 
   const key = statusKey(channel);
   if (!c || c[key] === "unsubscribed") return;
   await d.db.update(contacts).set({ [key]: "unsubscribed", updatedAt: now }).where(eq(contacts.id, c.id));
-  await d.db.insert(consentEvents).values({ id: newId("cev"), storeId, contactId: c.id, channel, event: "revoked", source, createdAt: now });
+  const revokedId = newId("cev");
+  await d.db.insert(consentEvents).values({ id: revokedId, storeId, contactId: c.id, channel, event: "revoked", source, createdAt: now });
   await onRevoked(d, storeId, c.id, channel); // take them off the merchant's list provider(s) too
+  await publishDomainEvent(d, { type: "customer.unsubscribed", payload: { contactId: c.id, channel }, idempotencyKey: `consent:${revokedId}`, storeId, source: "storefront" });
 }
 
 /* ---------- signed unsubscribe links ---------- */
@@ -219,7 +233,7 @@ export async function subscribeEmail(d: Deps, input: { siteKey: string; campaign
   if (!contactCaptureAvailable(d)) return;
   const [store] = await d.db.select().from(stores).where(eq(stores.siteKey, input.siteKey)).limit(1);
   if (!store || store.status !== "active") return;
-  if (!(await getPlan(d, store.organizationId)).tools.includes("email")) return;
+  if (!(await entitlementsFor(d, store.organizationId)).has("tools.email")) return;
 
   // The words the shopper agreed to come from the form that is live right now, never from the request: a caller
   // cannot claim consent to something the form did not say.
@@ -248,6 +262,92 @@ export async function subscribeEmail(d: Deps, input: { siteKey: string; campaign
   }
 }
 
+/* ---------- public SMS sign-up (verified by a texted one-time code) ---------- */
+
+/** How long after a code was requested it can be entered. Twilio Verify codes last 10 minutes; this only bounds our own lookup. */
+export const SMS_CONFIRM_WINDOW_MS = 30 * 60_000;
+
+/** SMS sign-up needs the tool to be shipped, a phone verifier and the signing key (consent proof and erasure use it). */
+export const smsCaptureAvailable = (d: Deps): boolean => SHIPPED_TOOLS.has("sms") && Boolean(d.phoneVerifier) && Boolean(d.secrets?.credentialKey);
+
+/** The live SMS form a request names, or nothing: the browser can name a campaign but never what its form says. */
+async function liveSmsForm(d: Deps, siteKey: string, campaignId: string) {
+  const [store] = await d.db.select().from(stores).where(eq(stores.siteKey, siteKey)).limit(1);
+  if (!store || store.status !== "active") return undefined;
+  if (!(await entitlementsFor(d, store.organizationId)).has("tools.sms")) return undefined;
+  const [camp] = await d.db.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.storeId, store.id))).limit(1);
+  if (!camp || camp.status !== "active" || camp.tool !== "sms" || !camp.publishedVersionId) return undefined;
+  const [version] = await d.db.select().from(campaignVersions).where(eq(campaignVersions.id, camp.publishedVersionId)).limit(1);
+  const cfg = version ? CampaignConfig.safeParse(version.config) : undefined;
+  const form = cfg?.success ? cfg.data.form : undefined;
+  if (!form?.collect.phone) return undefined;
+  return { store, camp, form, versionId: camp.publishedVersionId, source: `form:${camp.id}` };
+}
+
+/**
+ * "sent": a code is on its way. "skipped": nothing was sent (not collecting, suppressed, already subscribed, asked moments
+ * ago, or the month's verification allowance is used up); the caller answers exactly as for "sent". "undeliverable": the
+ * provider will not text this number (a landline, an invalid number), which says nothing about our data and lets the
+ * shopper correct it.
+ */
+export type SmsStartResult = "sent" | "skipped" | "undeliverable";
+
+/** Public and unauthenticated. Records the request with the exact consent wording of the live form, then texts a code. */
+export async function startSmsSignup(d: Deps, input: { siteKey: string; campaignId: string; phone: string; firstName?: string | undefined }): Promise<SmsStartResult> {
+  if (!smsCaptureAvailable(d)) return "skipped";
+  const live = await liveSmsForm(d, input.siteKey, input.campaignId);
+  if (!live) return "skipped";
+  const phone = normalizePhone(input.phone);
+  if (!phone) return "undeliverable";
+  // Each code costs the platform a verification fee, so the month's allowance is checked before anything is recorded or sent.
+  if ((await quota(d, live.store.organizationId, "sms_verifications")).remaining <= 0) return "skipped";
+  const r = await requestOptIn(d, live.store.id, { channel: "sms", value: phone, source: live.source, consentText: live.form.consentText, privacyUrl: live.form.privacyUrl, versionId: live.versionId, firstName: live.form.collect.firstName ? input.firstName : undefined });
+  if (!r) return "skipped";
+  try {
+    await d.phoneVerifier!.start(phone, { friendlyName: live.store.name });
+    await recordUsage(d, live.store.organizationId, "sms_verifications");
+    return "sent";
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", where: "sms_verification_start", kind: e instanceof ProviderError ? e.kind : "unexpected", message: e instanceof Error ? e.message : "send failed" }));
+    // Nothing reached the shopper, so this request must not hold them in the cooldown.
+    await markDeliveryFailed(d, live.store.id, r.contactId, "sms", live.source).catch(() => undefined);
+    return e instanceof ProviderError && e.kind === "rejected" ? "undeliverable" : "skipped";
+  }
+}
+
+/**
+ * The shopper typed the code back into the form. Only a request made from this same live form, still pending and recent,
+ * can be confirmed, and only when the provider agrees the code is right. Returns null for every way of not confirming.
+ */
+export async function confirmSmsSignup(d: Deps, input: { siteKey: string; campaignId: string; phone: string; code: string }): Promise<Confirmed | null> {
+  if (!smsCaptureAvailable(d) || !/^\d{4,10}$/.test(input.code)) return null;
+  const live = await liveSmsForm(d, input.siteKey, input.campaignId);
+  const phone = normalizePhone(input.phone);
+  if (!live || !phone) return null;
+  const c = await findContact(d, live.store.id, "sms", phone);
+  if (!c || c.smsStatus !== "pending") return null;
+  const [req] = await d.db.select().from(consentEvents)
+    .where(and(eq(consentEvents.contactId, c.id), eq(consentEvents.channel, "sms"), eq(consentEvents.event, "requested"), eq(consentEvents.source, live.source)))
+    .orderBy(desc(consentEvents.createdAt), sql`rowid desc`).limit(1);
+  if (!req || Date.parse(req.createdAt) + SMS_CONFIRM_WINDOW_MS < d.now().getTime()) return null;
+  let approved: boolean;
+  try { approved = await d.phoneVerifier!.check(phone, input.code); }
+  catch (e) {
+    console.error(JSON.stringify({ level: "error", where: "sms_verification_check", kind: e instanceof ProviderError ? e.kind : "unexpected" }));
+    throw e;
+  }
+  return approved ? confirmRequest(d, req) : null;
+}
+
+/** A merchant records an opt-out they received another way (a STOP reply at their SMS provider, a support request). */
+export async function optOutContact(d: Deps, storeId: string, contactId: string, channel: Channel): Promise<boolean> {
+  const [c] = await d.db.select().from(contacts).where(and(eq(contacts.storeId, storeId), eq(contacts.id, contactId))).limit(1);
+  const value = c && (channel === "email" ? c.email : c.phone);
+  if (!c || !value) return false;
+  await revokeConsent(d, storeId, channel, value, "merchant");
+  return true;
+}
+
 /* ---------- merchant-facing reads and erasure ---------- */
 
 const PAGE_MAX = 100;
@@ -261,6 +361,7 @@ export async function listContacts(d: Deps, storeId: string, f: ContactFilter = 
   if (f.email) where.push(eq(contacts.email, f.email.trim().toLowerCase()));
   if (f.phone) where.push(eq(contacts.phone, f.phone.replace(/[\s().-]/g, "")));
   if (f.status) where.push(eq(contacts[statusKey(f.channel ?? "email")], f.status));
+  else if (f.channel) where.push(isNotNull(f.channel === "email" ? contacts.email : contacts.phone)); // everyone reachable on that channel, whatever their status
   if (f.cursor) {
     const [at, id] = f.cursor.split("|");
     if (at && id) where.push(or(lt(contacts.createdAt, at), and(eq(contacts.createdAt, at), lt(contacts.id, id)))!);
@@ -277,20 +378,22 @@ export async function listContacts(d: Deps, storeId: string, f: ContactFilter = 
 export const EXPORT_MAX = 50_000;
 /** A cell that starts with = + - @ is run as a formula by spreadsheets, and an email address may legally start with any of them. */
 const csvCell = (v: string): string => {
-  const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  // A validated E.164 number ("+" then digits) cannot form a formula, and an apostrophe would corrupt every row for an SMS importer.
+  const s = /^[=+\-@\t\r]/.test(v) && !E164_RE.test(v) ? `'${v}` : v;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 /**
- * Everyone currently subscribed by email, as CSV: the merchant's way to use the list until sending is built.
- * Pending and unsubscribed contacts are never included. `subscribed_at` is when they confirmed (a subscribed
+ * Everyone currently subscribed on one channel, as CSV: the merchant's way to use the list in their own sending tool.
+ * Pending and unsubscribed contacts are never included. SMS rows hold the E.164 number. `subscribed_at` is when they confirmed (a subscribed
  * contact's last change is its confirmation).
  */
-export async function exportSubscribers(d: Deps, storeId: string): Promise<{ csv: string; truncated: boolean }> {
-  const rows = await d.db.select({ email: contacts.email, firstName: contacts.firstName, source: contacts.source, subscribedAt: contacts.updatedAt })
-    .from(contacts).where(and(eq(contacts.storeId, storeId), eq(contacts.emailStatus, "subscribed"))).orderBy(contacts.createdAt, sql`rowid`).limit(EXPORT_MAX + 1); // rowid = insertion order, so contacts created in the same instant keep a stable order
+export async function exportSubscribers(d: Deps, storeId: string, channel: Channel = "email"): Promise<{ csv: string; truncated: boolean }> {
+  const id = channel === "email" ? contacts.email : contacts.phone;
+  const rows = await d.db.select({ id, firstName: contacts.firstName, source: contacts.source, subscribedAt: contacts.updatedAt })
+    .from(contacts).where(and(eq(contacts.storeId, storeId), eq(contacts[statusKey(channel)], "subscribed"))).orderBy(contacts.createdAt, sql`rowid`).limit(EXPORT_MAX + 1); // rowid = insertion order, so contacts created in the same instant keep a stable order
   const page = rows.slice(0, EXPORT_MAX);
-  const lines = ["email,first_name,subscribed_at,source", ...page.map((r) => [r.email ?? "", r.firstName ?? "", r.subscribedAt, r.source].map(csvCell).join(","))];
+  const lines = [`${channel === "email" ? "email" : "phone"},first_name,subscribed_at,source`, ...page.map((r) => [r.id ?? "", r.firstName ?? "", r.subscribedAt, r.source].map(csvCell).join(","))];
   return { csv: lines.join("\r\n") + "\r\n", truncated: rows.length > EXPORT_MAX };
 }
 
@@ -317,6 +420,7 @@ export async function eraseContact(d: Deps, storeId: string, contactId: string):
   if (!c) return { erased: false, providerFailures: [] };
   const providerFailures = await removeFromProviders(d, storeId, contactId);
   const r = await d.db.delete(contacts).where(and(eq(contacts.storeId, storeId), eq(contacts.id, contactId))).returning({ id: contacts.id });
+  await forgetContactEvents(d, storeId, contactId);
   return { erased: r.length > 0, providerFailures };
 }
 

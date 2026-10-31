@@ -44,8 +44,8 @@ const BASE: Record<Tool, Omit<ToolMeta, "key" | "name" | "shipped"> & { defaultN
   sms: {
     defaultName: "SMS signup",
     tagline: "Consent-aware phone capture",
-    about: "Collect SMS marketing opt-ins with explicit consent and sync them to your messaging provider. Not available yet.",
-    setup: ["Install the storefront snippet", "Connect an SMS provider"],
+    about: "Collect SMS marketing subscribers with an explicit, unticked consent box. Shoppers confirm their number with a one-time code we text them, so nobody is subscribed to a number they do not hold. Popup, slide-in, bar or inline form. Export verified numbers as a CSV, or have them copied with their SMS consent to Klaviyo. This app does not send marketing texts itself.",
+    setup: ["Install the storefront snippet", "Connect Klaviyo (Subscribers page) to text your subscribers from there", "Have your SMS consent wording reviewed for the countries you sell to"],
   },
   email: {
     defaultName: "Email signup",

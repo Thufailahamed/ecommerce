@@ -20,7 +20,7 @@ function Preview({ store, id }: { store: Store; id: string }) {
           <div role="group" aria-label="Device" className="flex gap-1">
             {(["desktop", "mobile"] as const).map((d) => (
               <button key={d} type="button" aria-pressed={device === d} onClick={() => setDevice(d)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium capitalize transition-colors ${device === d ? "bg-white/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}>{d}</button>
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium capitalize transition-colors ${device === d ? "bg-ink/[0.08] text-ink" : "text-ink-3 hover:text-ink-2"}`}>{d}</button>
             ))}
           </div>
         } />

@@ -17,7 +17,7 @@ const HUES = {
 
 function Card({ title, body, hue, className = "", children, delay = 0 }: { title: string; body: string; hue: keyof typeof HUES; className?: string; children: ReactNode; delay?: number }) {
   return (
-    <Reveal delay={delay} className={`spot group relative flex min-h-[30rem] flex-col overflow-hidden rounded-[1.75rem] bg-[#0b0d14] ring-1 ring-white/10 transition-[box-shadow] duration-500 hover:ring-white/20 ${className}`}>
+    <Reveal delay={delay} className={`on-deep spot group relative flex min-h-[30rem] flex-col overflow-hidden rounded-[1.75rem] bg-[#0b0d14] text-white shadow-[0_30px_60px_-34px_rgba(10,12,20,.6)] ring-1 ring-black/10 transition-[box-shadow] duration-500 hover:shadow-[0_40px_80px_-34px_rgba(35,80,255,.55)] ${className}`}>
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-80 transition-opacity duration-700 group-hover:opacity-100" style={{ background: HUES[hue] }} />
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
       <div className="relative z-[2] p-7 md:p-8">
@@ -205,11 +205,11 @@ function SpeedGauge() {
 export function Bento() {
   return (
     <section id="studio" aria-label="The studio" className="relative bg-canvas pb-24 pt-20">
-      <div aria-hidden className="dots pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_50%_at_50%_0%,#000,transparent)]" />
+      <div aria-hidden className="dots-dark pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_50%_at_50%_0%,#000,transparent)]" />
       <div className="wrap relative">
         <Reveal className="mx-auto max-w-3xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-4 py-1.5 text-[13px] font-semibold text-brand ring-1 ring-brand-tint"><LogoMark className="size-4" />The studio</span>
-          <h2 className="mt-6 text-[clamp(2.25rem,5vw,4.25rem)] font-extrabold leading-[1.02] tracking-[-0.03em]"><span className="text-white/45">Everything you need,</span> in one place</h2>
+          <h2 className="mt-6 text-[clamp(2.25rem,5vw,4.25rem)] font-extrabold leading-[1.02] tracking-[-0.03em]"><span className="text-ink/40">Everything you need,</span> in one place</h2>
           <p className="mx-auto mt-5 max-w-xl text-[16px] text-ink-2">Formats, rules, catalog, approvals, automation and measurement, built to work together instead of fighting over the page.</p>
         </Reveal>
         <div className="mt-14 grid gap-4 lg:grid-cols-3">

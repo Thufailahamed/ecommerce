@@ -181,7 +181,7 @@ function Studio({ store }: { store: Store }) {
         <aside className={clsx("min-w-0", result && "xl:sticky xl:top-6")}>
           {!result ? (
             <form className="card overflow-hidden" onSubmit={(e) => { e.preventDefault(); void generate(false); }}>
-              <div className="flex items-center justify-between border-b border-line bg-white/[0.02] px-5 py-3.5">
+              <div className="flex items-center justify-between border-b border-line bg-ink/[0.02] px-5 py-3.5">
                 <div className="flex items-center gap-2">
                   <span aria-hidden className="grid size-6 place-items-center rounded-lg bg-brand-solid text-[10px] font-bold text-white shadow-[0_6px_16px_-6px_rgba(35,80,255,1)]">1</span>
                   <h2 className="font-display text-[11px] font-bold uppercase tracking-[0.16em]">Brief the agent</h2>
@@ -213,7 +213,7 @@ function Studio({ store }: { store: Store }) {
                   <div className="flex flex-wrap gap-1.5">
                     {QUICK_BRIEFS.map((b) => (
                       <button key={b.title} type="button" onClick={() => { set("objective", b.objective); set("tool", b.tool); }}
-                        className="group inline-flex items-center gap-1 rounded-full border border-line bg-white/[0.02] px-2.5 py-1 text-[11px] font-medium text-ink-2 transition-colors hover:border-brand-tint hover:bg-brand-soft hover:text-ink">
+                        className="group inline-flex items-center gap-1 rounded-full border border-line bg-ink/[0.02] px-2.5 py-1 text-[11px] font-medium text-ink-2 transition-colors hover:border-brand-tint hover:bg-brand-soft hover:text-ink">
                         {b.title}<ArrowUpRight className="size-3 text-ink-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
                       </button>
                     ))}
@@ -225,7 +225,7 @@ function Studio({ store }: { store: Store }) {
                 <div className="overflow-hidden rounded-2xl border border-line bg-canvas/40">
                   <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
                     <div className="flex items-center gap-2"><ShieldCheck className="size-4 text-brand" aria-hidden /><span className="text-xs font-semibold">Guardrails</span></div>
-                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ink-3">Optional</span>
+                    <span className="rounded-full bg-ink/[0.05] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ink-3">Optional</span>
                   </div>
                   <div className="space-y-4 p-4">
                     <p className="text-[11px] leading-relaxed text-ink-3">Facts the agent must not invent. Blank means it will avoid the claim.</p>
@@ -264,7 +264,7 @@ function Studio({ store }: { store: Store }) {
             </form>
           ) : (
             <section className="card overflow-hidden" aria-label="Agent thread">
-              <div className="flex items-center justify-between gap-3 border-b border-line bg-white/[0.02] px-4 py-3">
+              <div className="flex items-center justify-between gap-3 border-b border-line bg-ink/[0.02] px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <AgentOrb size={26} state="done" />
                   <div className="min-w-0">
@@ -272,7 +272,7 @@ function Studio({ store }: { store: Store }) {
                     <p className="truncate text-[10px] text-ink-3">{result.updated ? "Draft updated" : "Draft created"} · {history.length} {history.length === 1 ? "message" : "messages"}</p>
                   </div>
                 </div>
-                <button type="button" onClick={startOver} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium text-ink-3 transition-colors hover:bg-white/[0.06] hover:text-ink">
+                <button type="button" onClick={startOver} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium text-ink-3 transition-colors hover:bg-ink/[0.06] hover:text-ink">
                   <RotateCcw className="size-3" aria-hidden />New brief
                 </button>
               </div>
@@ -313,7 +313,7 @@ function Studio({ store }: { store: Store }) {
                       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand">Editing: {FIELD_LABEL[selected]}</div>
                       <p className="mt-0.5 line-clamp-2 text-xs text-ink-2">{selectedValue}</p>
                     </div>
-                    <button type="button" onClick={() => setSelected(null)} aria-label="Clear selection" className="grid size-6 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-white/[0.08] hover:text-ink"><X className="size-3.5" aria-hidden /></button>
+                    <button type="button" onClick={() => setSelected(null)} aria-label="Clear selection" className="grid size-6 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-ink/[0.08] hover:text-ink"><X className="size-3.5" aria-hidden /></button>
                   </div>
                 ) : (
                   <p className="mb-2.5 text-[11px] leading-relaxed text-ink-3">Tip: click the headline, body, button or form in the preview to edit just that part.</p>
@@ -343,7 +343,7 @@ function Studio({ store }: { store: Store }) {
 
         <section aria-live="polite" className={clsx("min-w-0", !result && "xl:sticky xl:top-6")}>
           {!result && (busy ? (
-            <div className="relative overflow-hidden rounded-[1.75rem] border border-line bg-[#080a10]" aria-busy="true">
+            <div className="relative overflow-hidden rounded-[1.75rem] border border-line bg-surface-2" aria-busy="true">
               <div aria-hidden className="agent-grid pointer-events-none absolute inset-0 opacity-50" />
               <div className="relative flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
                 <div className="flex items-center gap-2.5">
@@ -375,7 +375,7 @@ function Studio({ store }: { store: Store }) {
               </div>
             </div>
           ) : (
-            <div className="relative min-h-[560px] overflow-hidden rounded-[1.75rem] border border-line bg-[#080a10]">
+            <div className="relative min-h-[560px] overflow-hidden rounded-[1.75rem] border border-line bg-surface-2">
               <div aria-hidden className="agent-grid pointer-events-none absolute inset-0 opacity-70" />
               <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-brand-solid/20 blur-3xl" />
               <div className="relative flex min-h-[560px] flex-col items-center justify-center px-6 py-12 text-center">
@@ -410,13 +410,13 @@ function Studio({ store }: { store: Store }) {
                   <span className="inline-flex items-center gap-2 rounded-full border border-ok/25 bg-ok/10 px-3 py-1 text-xs font-medium text-ok"><LiveDot />Live preview</span>
                   <span className="text-xs text-ink-3">Draft only. Nothing is live until you approve it.</span>
                 </div>
-                <div role="group" aria-label="Preview device" className="flex gap-1 rounded-full border border-line bg-white/[0.02] p-0.5">
+                <div role="group" aria-label="Preview device" className="flex gap-1 rounded-full border border-line bg-ink/[0.02] p-0.5">
                   <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")} className={clsx("inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all", device === "desktop" ? "seg-active" : "text-ink-2 hover:text-ink")}><Monitor className="size-4" aria-hidden />Desktop</button>
                   <button type="button" aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")} className={clsx("inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all", device === "mobile" ? "seg-active" : "text-ink-2 hover:text-ink")}><Smartphone className="size-4" aria-hidden />Mobile</button>
                 </div>
               </div>
 
-              <div className="relative overflow-hidden rounded-[1.75rem] border border-line bg-[#080a10] p-3 md:p-4">
+              <div className="relative overflow-hidden rounded-[1.75rem] border border-line bg-surface-2 p-3 md:p-4">
                 <div aria-hidden className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-brand/70 to-transparent" />
                 <div aria-hidden className="pointer-events-none absolute inset-0 agent-grid opacity-25" />
                 <div className="relative">
